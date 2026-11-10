@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Display-only prototype with example data; not connected to saved lessons. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>表达收藏</title>
+<style>
+:root{color-scheme:light;--paper:#f7f7f2;--card:#fffefa;--ink:#292e28;--muted:#72786b;--line:#dedfd4;--green:#455b36}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:900px;margin:auto;padding:34px 28px 64px}
+header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:23px}
+h1{margin:0;font-size:20px;font-weight:550;letter-spacing:-.4px}
+.sample-note{color:var(--muted);font-size:11px}
+.reading-list{display:grid;gap:16px}
+.lesson{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:24px 28px;min-width:0}
+.source{margin:0 0 10px;color:var(--muted);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.english{margin:0;font:25px/1.6 Georgia,"Times New Roman",serif;letter-spacing:-.25px;white-space:pre-wrap;overflow-wrap:anywhere}
+mark{color:inherit;background:none;text-decoration:underline;text-decoration-color:#9aa986;text-decoration-thickness:2px;text-underline-offset:5px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.grammar{margin-top:19px;border-top:1px solid #e8e9df;padding-top:13px;color:var(--muted);font-size:13px}
+.pattern{margin:0;color:var(--green);font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+.grammar-label{margin-right:11px;font:11px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:var(--muted)}
+.explanation{margin:5px 0 0}
+.correction{margin:5px 0 0}
+::selection{background:#dce5cd;color:#24321e}
+@media(max-width:600px){
+  main{padding:24px 16px 40px}
+  header{margin-bottom:18px}
+  h1{font-size:19px}
+  .lesson{padding:20px 18px}
+  .english{font-size:23px}
+}
+</style>
+</head>
+<body>
+<main>
+<header><h1>表达收藏</h1><span class="sample-note">示例数据</span></header>
+<div class="reading-list" id="lessons"></div>
+</main>
+<script>
+const lessons = [
+  {original:'什么情况下会显示？',english:'Under what circumstances will it be displayed?',grammar:{excerpt:'will it be displayed',pattern:'will + subject + be + past participle',explanation:'一般将来时的被动语态疑问句。will 放在主语 it 前；be 后接过去分词 displayed，表示“它会被显示”。'}},
+  {original:'先梳理目标和计划，暂时不要实现。',english:"Outline the goals and the plan first. Don't implement anything yet.",grammar:{excerpt:"Don't implement",pattern:"Don't + base verb",explanation:'否定祈使句，用 Don’t 加动词原形表示“不要做某事”。句末的 yet 对应“暂时还不要”。'}},
+  {original:'帮我查清楚这个接口为什么被调用了两次。',english:'Help me find out why this API was called twice.',grammar:{excerpt:'why this API was called twice',pattern:'why + subject + verb',explanation:'why 引导 find out 的宾语从句，使用陈述语序：this API 在 was 前面，而不是 why was this API…。'}},
+  {original:"He don't know how to fix this bug.",english:"He doesn't know how to fix this bug.",grammar:{excerpt:"He doesn't know",pattern:"he + doesn't + base verb",explanation:'第三人称单数 he 的一般现在时否定用 doesn’t；后面的实义动词 know 保持原形。',correction:'don’t → doesn’t；know 不变。'}},
+  {original:'保持函数签名不变，也不要新增依赖。',english:"Keep the function signature unchanged, and don't add any dependencies.",grammar:{excerpt:'Keep the function signature unchanged',pattern:'keep + object + adjective',explanation:'keep 后的形容词 unchanged 描述宾语 the function signature 的状态，表示“使函数签名保持不变”。'}},
+  {original:'请检查 src/api/client.ts 中的 fetchUser()。先复现 HTTP 429 后反复重试的问题，再提出最小修复方案，并说明如何验证。修改之前先运行现有测试。\n\n保留这段代码不变：\nconst timeout = 5000;',english:'Review fetchUser() in src/api/client.ts. First reproduce the repeated retries after an HTTP 429 response, then propose the smallest fix and explain how to verify it. Run the existing tests before making any changes.\n\nKeep this code unchanged:\nconst timeout = 5000;',grammar:{excerpt:'before making any changes',pattern:'before + verb-ing',explanation:'这里 before 是介词，后接动名词 making，表示“在做任何修改之前”。路径、函数名和代码按原样保留。'}}
+];
+function node(tag,className,text){
+  const element=document.createElement(tag);
+  if(className)element.className=className;
+  if(text!==undefined)element.textContent=text;
+  return element;
+}
+function english(item){
+  const element=node('p','english');
+  const excerpt=item.grammar.excerpt;
+  const start=item.english.indexOf(excerpt);
+  if(start<0){element.textContent=item.english;return element;}
+  element.append(
+    document.createTextNode(item.english.slice(0,start)),
+    node('mark','',excerpt),
+    document.createTextNode(item.english.slice(start+excerpt.length))
+  );
+  return element;
+}
+for(const item of lessons){
+  const article=node('article','lesson');
+  article.setAttribute('aria-label',item.original);
+  const grammar=node('div','grammar');
+  const pattern=node('p','pattern');
+  pattern.append(node('span','grammar-label','语法'),document.createTextNode(item.grammar.pattern));
+  grammar.append(pattern,node('p','explanation',item.grammar.explanation));
+  if(item.grammar.correction)grammar.append(node('p','correction','纠正：'+item.grammar.correction));
+  article.append(node('p','source',item.original),english(item),grammar);
+  document.getElementById('lessons').append(article);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+test/
+docs/
+prototypes/
+.scratch/
+.env
+.env.*
+coverage/
+node_modules/

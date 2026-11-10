@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pi prompt coach · 交互草图</title>
+<style>
+:root{color-scheme:light;--paper:#f4f3ee;--ink:#242a28;--muted:#69716a;--line:#d9ddd4;--accent:#356348;--terminal:#191d1d;--text:#d6dbd6;--quiet:#9ca89f;--mint:#b4dcb6;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif}button,select,textarea{font:inherit}button,select{cursor:pointer}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #8dbb9d;outline-offset:3px}button{color:inherit}main{max-width:1440px;margin:auto;padding:36px 44px 24px}.masthead{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:19px;gap:16px}.brand{font:600 15px var(--mono);letter-spacing:-.4px}.brand span{color:var(--accent)}.edition{font:11px var(--mono);color:var(--muted);letter-spacing:1px}.intro{display:flex;align-items:end;justify-content:space-between;padding:28px 0 30px;gap:32px}h1{font-size:30px;line-height:1.3;font-weight:600;letter-spacing:-1px;margin:0 0 10px}.intro p{margin:0;color:var(--muted);font-size:14px}.prototype-label{border:1px solid #bec9ba;padding:5px 11px;white-space:nowrap;color:var(--accent);font:11px var(--mono)}.workspace{display:grid;grid-template-columns:230px minmax(0,1fr);gap:30px}.controls{padding-top:3px}.section-label{font:11px var(--mono);color:var(--muted);letter-spacing:1px;margin:0 0 12px}.variants{display:grid;gap:9px}.variant{background:transparent;border:1px solid var(--line);padding:13px;text-align:left;border-radius:5px}.variant strong{font-size:14px;font-weight:550;display:block}.variant span{display:block;color:var(--muted);font-size:12px;margin-top:4px}.variant[aria-pressed=true]{background:#e6ebe0;border-color:#92a58f}.form-section{margin-top:26px}.controls label{font-size:12px;display:block;margin-bottom:8px}.controls select{width:100%;padding:8px 7px;border:1px solid #cdd3c8;border-radius:4px;background:#f9faf6;color:var(--ink);font-size:12px}.controls p{font-size:12px;color:var(--muted);margin:10px 0 0}.control-row{display:flex;gap:8px;margin-top:10px}.small{border:1px solid #cdd3c8;border-radius:4px;background:transparent;padding:5px 9px;font-size:12px}.small:disabled{opacity:.4;cursor:default}.legend{border-top:1px solid var(--line);margin-top:26px;padding-top:17px}.legend p{margin:0 0 10px}.legend b{color:var(--accent);font-weight:500}.terminal{min-width:0;background:var(--terminal);color:var(--text);border:1px solid #313a35;border-radius:9px;overflow:hidden;box-shadow:0 13px 30px #1c251c13;font:13px/1.75 var(--mono)}.terminal-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid #303634;background:#222727}.dot{width:8px;height:8px;border-radius:50%;background:#657168}.terminal-title{margin:auto;color:#a6b0a7;font-size:11px}.terminal-bar .tag{font-size:10px;color:#a6b0a7}.terminal-body{padding:23px 25px 17px;display:flex;flex-direction:column;min-height:590px}.session-header{display:flex;justify-content:space-between;color:#8b9b8e;font-size:11px;padding-bottom:22px}.conversation{flex:1;padding-bottom:35px}.speaker{color:#b2beaf;font-size:11px;margin-bottom:7px}.sent-text{max-width:760px;white-space:pre-wrap;overflow-wrap:anywhere}.assistant{margin-top:24px;border-left:2px solid #485b4c;padding-left:14px;color:#c1cac2}.assistant .speaker{color:#a7c6aa}.assistant p{margin:4px 0}.file-line{font-size:11px;color:#a7b4a8;margin-top:12px}.coach{height:48px;flex:none;margin-top:auto;min-width:0}.coach-row{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;height:24px;line-height:24px;align-items:baseline;overflow:hidden}.coach-row>:last-child{height:24px;line-height:24px;white-space:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.coach-row>:last-child::-webkit-scrollbar{display:none}.row-label{font-size:10px;letter-spacing:1px;color:#a8bba9}.grammar-row .row-label{color:#d6bd91}.english{font-size:13px;color:var(--mint);min-width:0}.english mark{background:#34463b;color:#e0f1d8;border-radius:2px;border-bottom:1px solid #8dbb9d;padding:1px 0}.grammar{color:#c6ccc2;font-size:12px;min-width:0}.grammar-name{color:#dfc797}.grammar-pattern{color:#e5dcc5}.grammar-separator{color:#7f907f}.grammar-detail{color:#c6ccc2}.pending{color:#c6d0c4;font-size:12px}.error{color:#e3bb9d;font-size:12px}.quiet{color:var(--quiet);font-size:12px}.editor{border-top:1px solid #6e8a73;border-bottom:1px solid #6e8a73;display:flex;align-items:start;gap:10px;padding:10px 0 7px}.prompt-sign{color:#a4d1ac;font-size:16px;line-height:1.5}textarea{border:0;resize:vertical;background:transparent;color:#e2e8df;outline:none;display:block;width:100%;min-height:49px;max-height:160px;padding:0;font:13px/1.7 var(--mono)}textarea::placeholder{color:#94a196}textarea:focus-visible{outline:none}.footer{display:flex;justify-content:space-between;color:#97a498;font-size:10px;gap:12px;margin-top:10px}.demo-actions{display:flex;justify-content:space-between;gap:15px;align-items:center;padding-top:13px}.demo-actions p{font-size:12px;color:var(--muted);margin:0}.send{background:#315c42;color:#f8faf3;border:0;border-radius:4px;padding:9px 17px;white-space:nowrap;font-size:12px}.send:disabled{opacity:.5}.caption{display:flex;gap:20px;justify-content:space-between;margin-top:28px;border-top:1px solid var(--line);padding-top:17px;color:var(--muted);font-size:12px}.caption span{max-width:660px}.notice{margin-top:10px;color:var(--accent);font-size:12px;min-height:20px}.terminal.compact-width{max-width:650px}.terminal.compact-width .terminal-body{padding:18px}.terminal.compact-width .session-header{flex-wrap:wrap;gap:8px}.terminal.compact-width .footer{flex-wrap:wrap}.terminal.compact-width .english{font-size:13px}
+@media(max-width:950px){main{padding:24px}.workspace{grid-template-columns:180px minmax(0,1fr);gap:20px}.terminal-body{padding:20px;min-height:650px}.intro{align-items:start}h1{font-size:25px}.footer{flex-wrap:wrap}}@media(max-width:690px){main{padding:18px 14px}.workspace{display:block}.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}.variants{grid-template-columns:1fr 1fr;grid-column:1/-1}.section-label{grid-column:1/-1;margin-bottom:-4px}.form-section{margin:0}.legend{grid-column:1/-1;margin:0;padding-top:10px}.legend p{display:inline}.intro{padding:22px 0}.prototype-label,.edition{display:none}.terminal-body{min-height:660px;padding:18px}.session-header{flex-wrap:wrap;gap:5px}.english{font-size:13px}.caption{display:block}.demo-actions{align-items:start}.demo-actions p{max-width:65%}}
+</style>
+</head>
+<body>
+<main>
+<header class="masthead"><div class="brand">pi <span>/</span> prompt coach</div><div class="edition">INTERACTION STUDY · 03</div></header>
+<section class="intro"><div><h1>照常提问，顺便学一句英语。</h1><p>输入框上方总共两行。第一行英文，第二行语法。</p></div><span class="prototype-label">HTML 草图 · 非 Pi 插件</span></section>
+<div class="workspace">
+<aside class="controls" aria-label="原型控制台">
+<div class="section-label">01 / DISPLAY</div>
+<div class="variants"><button class="variant" data-layout="compact" aria-pressed="true"><strong>A · 语法简解</strong><span>完整英文 + 句型与一句中文解释。</span></button><button class="variant" data-layout="study" aria-pressed="false"><strong>B · 语法详解</strong><span>仍只占两行，超出宽度横向查看。</span></button></div>
+<div class="form-section"><label for="sample">02 / 换一条示例</label><select id="sample"><option value="plan">梳理目标与计划</option><option value="bug">排查重复请求</option><option value="long">长提示词与代码</option><option value="english">已经是英文</option></select><p>选择后只放入草稿。点击「模拟发送」才更新英文。</p></div>
+<div class="form-section"><label for="grammar-point">03 / 当前译文的语法点</label><select id="grammar-point"></select><p>切换后高亮对应英文。每次只解释一个语法点。</p></div>
+<div class="form-section"><label for="scenario">04 / 面板状态</label><select id="scenario"><option value="ready">生成完成</option><option value="loading">正在生成</option><option value="partial">译文成功，语法暂缺</option><option value="error">请求失败</option></select><div class="control-row"><button class="small" id="retry" disabled>模拟重试</button><button class="small" id="width" aria-pressed="false">窄终端预览</button></div></div>
+<div class="legend"><p><b>原文始终照常发送。</b> 翻译失败也不拦住 Pi。</p><p>拟用学习模型 · MiniMax-M3[1M]<br>复用 Pi 的 minimax-cn 配置，独立请求，不进入主对话上下文。原型尚未调用模型。</p><p>总共两条物理行，不换行。长内容可横向滚动；点入对应行后也可用左右方向键。全部内容为预置示例，不调用模型。</p></div>
+</aside>
+<section aria-label="Pi 终端示意" style="min-width:0">
+<div class="terminal" id="terminal">
+<div class="terminal-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="terminal-title">pi · language-coach</span><span class="tag">TUI mock</span></div>
+<div class="terminal-body">
+<div class="session-header"><span>π &nbsp; coding agent</span><span>~/code/language-coach</span></div>
+<div class="conversation"><div class="speaker" id="sent-label">you · 已提交 #1</div><div class="sent-text" id="sent"></div><div class="assistant"><div class="speaker">pi · 独立执行原请求</div><p id="assistant-text">我会先检查参考项目和 Pi 扩展接口，再整理目标与计划。</p><div class="file-line">此处仅示意主对话。英文学习内容不会插入这段对话。</div></div></div>
+<div class="coach" id="coach" aria-live="polite"><div id="coach-content"></div></div>
+<div class="editor"><span class="prompt-sign">›</span><textarea id="draft" aria-label="下一条提示词草稿" placeholder="继续输入下一条提示词…" spellcheck="false"></textarea></div>
+<div class="footer"><span>model · 沿用你的 Pi 设置</span><span>Enter 发送 · Shift+Enter 换行</span></div>
+</div>
+</div>
+<div class="demo-actions"><p>外部按钮只用于演示。实际插件拟通过 /coach 命令控制面板。</p><button class="send" id="send">模拟发送 ↵</button></div>
+<div class="notice" id="notice" role="status"></div>
+</section>
+</div>
+<footer class="caption"><span>面板严格只有两行，没有额外标题、状态栏或命令提示。完整内容保留在单行内，横向滚动查看。输入框仍用于下一条草稿。横向滚动是 HTML 演示，实际 Pi 的查看方式尚需验证。</span><span>仅为 HTML 草图。未连接模型，不代表真实 Pi 效果。</span></footer>
+</main>
+<script>
+const samples = {
+  plan: {
+    source: '先梳理一下目标和计划，先不实现，有不明确的最后列出来。',
+    english: "Outline the goals and the plan first. Don't implement anything yet. List any open questions at the end.",
+    grammar: [
+      { name: '否定祈使句', excerpt: "Don't implement anything yet.", pattern: "Don't + 动词原形", summary: '表示「不要做某事」。yet 放在句末，补充「暂时还不要」的意思。', detail: '祈使句通常省略主语 you。否定时用 do not 或 don’t，后面接动词原形 implement，而不是 implements 或 implementing。这里的 yet 表达截至目前仍不应开始，结合上下文对应「先不实现」。' },
+      { name: '肯定祈使句', excerpt: 'Outline the goals and the plan first.', pattern: '动词原形 + 宾语', summary: '用动词原形 Outline 开头提出请求。first 明确「先做这件事」。', detail: '祈使句通常省略主语 you，直接以动词原形 Outline 开头。the goals and the plan 是并列宾语。句末 first 说明执行顺序；它不是动词时态的一部分。' },
+      { name: '时间介词短语', excerpt: 'at the end', pattern: 'at + the end', summary: '作时间状语，在这里表示「在最后」，修饰 List 这个动作。', detail: 'at the end 是介词短语，在这里表示列出问题的位置或时机，不是从句。句末修饰 List any open questions。注意不要换成 in the end，后者通常表示「最终」。' }
+    ]
+  },
+  bug: {
+    source: '帮我排查一下这个接口为什么重复请求，先找到原因，不要直接改代码。',
+    english: 'Help me figure out why this API is being called twice. Find the root cause before changing any code.',
+    grammar: [
+      { name: '现在进行时的被动语态', excerpt: 'this API is being called twice', pattern: '主语 + am/is/are being + 过去分词', summary: 'API 是被调用的对象。is being called 表示当前正在发生的被调用情况。', detail: 'this API 是单数主语，因此用 is。being + 过去分词 called 构成进行时的被动表达。它描述正在观察到的调用现象，twice 表示两次。' },
+      { name: '介词后接动名词', excerpt: 'before changing any code', pattern: 'before + 动词-ing', summary: 'before 后接 changing，表示「在修改代码之前」。', detail: '这里 before 后面不是完整的主谓句，而是 changing any code。执行 Find 和 changing 的都是同一个隐含主语 you。不要写成 before change any code；也可以改写为 before you change any code。' },
+      { name: '宾语从句的陈述语序', excerpt: 'why this API is being called twice', pattern: 'why + 主语 + 谓语', summary: 'why 引导 figure out 的宾语从句，用陈述语序，不把 is 移到主语前。', detail: '直接提问可以说 Why is this API being called twice? 但嵌入 figure out 后，顺序变为 why this API is being called twice。语序改变，原有的进行时和被动语态保留。' }
+    ]
+  },
+  long: {
+    source: '请检查 src/api/client.ts 中的 fetchUser()。保持函数签名不变，不要新增依赖。先复现 HTTP 429 后重复重试的问题，再提出最小修复方案，并说明如何验证。\n\n保留这段代码不变：\nconst timeout = 5000;',
+    english: "Review fetchUser() in src/api/client.ts. Keep the function signature unchanged and don't add any dependencies. First reproduce the repeated retries after an HTTP 429 response. Then propose the smallest fix and explain how to verify it.\n\nKeep this code unchanged:\nconst timeout = 5000;",
+    grammar: [
+      { name: '宾语补足语', excerpt: 'Keep the function signature unchanged', pattern: 'keep + 宾语 + 形容词', summary: 'unchanged 说明宾语保持的状态，整个结构表示「使函数签名保持不变」。', detail: 'Keep 是谓语动词，the function signature 是宾语，unchanged 作宾语补足语。unchanged 在这里是形容词，不是要求另一个动作。这个句型也可用于 keep the API stable。' },
+      { name: '疑问词接不定式', excerpt: 'how to verify it', pattern: 'how + to + 动词原形', summary: '表示「如何验证它」，整体作 explain 的宾语。', detail: 'how to verify it 是疑问词加不定式结构，不是带有完整主谓的从句。它表达需要说明的方法。这里 it 指前面提出的修复方案。' }
+    ]
+  },
+  english: {
+    source: 'Explain how this function works before changing it.',
+    english: 'Explain how this function works before changing it.',
+    grammar: [
+      { name: '宾语从句的主谓一致', excerpt: 'how this function works', pattern: 'how + 单数主语 + 动词第三人称单数', summary: 'this function 是单数，谓语用 works；从句保持陈述语序。', detail: 'how this function works 整体作 Explain 的宾语。一般现在时中，单数主语 this function 搭配 works。这里不是直接提问，不能写成 how does this function work。' },
+      { name: '介词后接动名词', excerpt: 'before changing it', pattern: 'before + 动词-ing', summary: '表示「在修改它之前」，changing 与 Explain 的执行者都是 you。', detail: 'before 后接 changing it，省去与主句相同的动作执行者。可以改写为 before you change it。这里 it 指 this function，不是语法从句。' }
+    ]
+  }
+};
+const state = { layout: 'compact', selectedSample: 'plan', submitted: { ...samples.plan, id: 1, sampleKey: 'plan' }, status: 'ready', grammarIndex: 0, generation: 0, narrow: false };
+const $ = (id) => document.getElementById(id);
+function appendText(parent, tag, className, text) {
+  const element = document.createElement(tag);
+  element.className = className;
+  element.textContent = text;
+  parent.append(element);
+  return element;
+}
+function render() {
+  const item = state.submitted;
+  $('sent').textContent = item.source;
+  $('sent-label').textContent = 'you · 已提交 #' + item.id;
+  $('coach').title = '最近提交 #' + item.id;
+  const content = $('coach-content');
+  content.replaceChildren();
+  const translationRow = appendText(content, 'div', 'coach-row translation-row', '');
+  appendText(translationRow, 'span', 'row-label', 'EN');
+  const translation = appendText(translationRow, 'div', 'english', '');
+  translation.tabIndex = 0;
+  translation.setAttribute('aria-label', '完整英文，可横向滚动');
+  const grammarRow = appendText(content, 'div', 'coach-row grammar-row', '');
+  appendText(grammarRow, 'span', 'row-label', '语法');
+  const grammar = appendText(grammarRow, 'div', 'grammar', '');
+  grammar.tabIndex = 0;
+  grammar.setAttribute('aria-label', '语法讲解，可横向滚动');
+  const point = item.grammar[state.grammarIndex];
+  const hasTranslation = state.status === 'ready' || state.status === 'partial' || state.status === 'grammar-loading';
+  const hasGrammar = state.status === 'ready' && Boolean(point);
+  if (hasTranslation) {
+    const start = hasGrammar ? item.english.indexOf(point.excerpt) : -1;
+    if (start >= 0) {
+      translation.append(document.createTextNode(item.english.slice(0, start)));
+      appendText(translation, 'mark', '', point.excerpt);
+      translation.append(document.createTextNode(item.english.slice(start + point.excerpt.length)));
+    } else translation.textContent = item.english;
+  } else {
+    translation.className = state.status === 'error' ? 'error' : 'pending';
+    translation.textContent = { loading:'正在生成完整英文… 原文已提交，你可以继续输入。', error:'英文参考暂不可用。原请求不受影响，可通过 /coach retry 重试。', unsupported:'这条内容不在预置示例中。原型不会伪造译文，也不会发起请求。' }[state.status];
+  }
+  if (hasGrammar) {
+    appendText(grammar, 'span', 'grammar-name', point.name);
+    appendText(grammar, 'span', 'grammar-separator', ' · ');
+    appendText(grammar, 'span', 'grammar-pattern', point.pattern);
+    appendText(grammar, 'span', 'grammar-separator', ' · ');
+    appendText(grammar, 'span', 'grammar-detail', state.layout === 'study' ? point.detail : point.summary);
+  } else {
+    grammar.className = 'grammar ' + (state.status === 'partial' ? 'error' : 'quiet');
+    grammar.textContent = { loading:'等待英文后提取对应句型，不影响你继续工作。', 'grammar-loading':'正在重新生成语法讲解，完整英文保持显示。', error:'语法讲解暂不可用，不展示上一次提交的语法。', partial:'语法暂不可用，已保留完整英文。可通过 /coach retry 重试。', unsupported:'没有真实模型输出，不生成语法讲解。', ready:'未提取到可靠的语法点，保留完整英文。' }[state.status];
+  }
+  const grammarPicker = $('grammar-point');
+  grammarPicker.replaceChildren();
+  if (hasGrammar) item.grammar.forEach((entry, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = (index + 1) + ' · ' + entry.name;
+    grammarPicker.append(option);
+  });
+  else appendText(grammarPicker, 'option', '', '暂无可用语法点');
+  grammarPicker.value = hasGrammar ? String(state.grammarIndex) : '暂无可用语法点';
+  grammarPicker.disabled = !hasGrammar;
+
+  $('retry').disabled = state.status !== 'error' && state.status !== 'partial';
+  $('send').disabled = !$('draft').value.trim();
+  $('terminal').classList.toggle('compact-width', state.narrow);
+  document.querySelectorAll('[data-layout]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.layout === state.layout)));
+}
+function generate() {
+  const token = ++state.generation;
+  state.status = state.status === 'partial' ? 'grammar-loading' : 'loading';
+  $('scenario').value = 'loading';
+  render();
+  setTimeout(() => {
+    if (token !== state.generation) return;
+    state.status = state.submitted.sampleKey ? 'ready' : 'unsupported';
+    $('scenario').value = 'ready';
+    render();
+  }, 1100);
+}
+function send() {
+  const source = $('draft').value.trim();
+  if (!source) return;
+  const match = Object.entries(samples).find(([, sample]) => sample.source === source);
+  state.submitted = { ...(match ? match[1] : {source, english:'', grammar:[]}), source, id:state.submitted.id + 1, sampleKey:match ? match[0] : null };
+  state.grammarIndex = 0;
+  $('draft').value = '';
+  $('assistant-text').textContent = '原文已提交。Pi 的主任务与英文参考独立进行。';
+  $('notice').textContent = '模拟提交完成。这里没有连接 Pi，也没有调用翻译服务。';
+  generate();
+  $('draft').focus();
+}
+document.querySelectorAll('[data-layout]').forEach(button => button.addEventListener('click', () => { state.layout = button.dataset.layout; render(); }));
+$('sample').addEventListener('change', () => { state.selectedSample = $('sample').value; $('draft').value = samples[state.selectedSample].source; $('notice').textContent = '示例已放入草稿。上方英文仍属于最近一次提交。'; render(); });
+$('scenario').addEventListener('change', () => {
+  ++state.generation;
+  state.status = state.submitted.sampleKey ? $('scenario').value : 'unsupported';
+  render();
+});
+$('grammar-point').addEventListener('change', () => { state.grammarIndex = Number($('grammar-point').value); render(); });
+$('retry').addEventListener('click', generate);
+$('width').addEventListener('click', () => { state.narrow = !state.narrow; $('width').setAttribute('aria-pressed', String(state.narrow)); render(); });
+$('draft').addEventListener('input', () => { $('send').disabled = !$('draft').value.trim(); });
+$('draft').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); } });
+$('send').addEventListener('click', send);
+render();
+</script>
+</body>
+</html>
