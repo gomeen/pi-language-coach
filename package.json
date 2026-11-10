@@ -1,6 +1,6 @@
 {
   "name": "pi-language-coach",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "MIT",
   "description": "Independent prompt, English and grammar coaching panel for Pi.",
   "type": "module",

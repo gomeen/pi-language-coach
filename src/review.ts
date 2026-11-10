@@ -72,6 +72,13 @@ export async function loadLessons(directory: string): Promise<ReviewData> {
   return result;
 }
 
+const PAGE_SIZE = 10;
+
+/** Prev / page counter / next; the grid keeps the counter centered when a side is absent. */
+function pager(page: number, total: number): string {
+  return `<nav class="pager" aria-label="翻页">${page > 1 ? `<a class="prev" rel="prev" href="#p${page - 1}">‹ 上一页</a>` : "<span></span>"}<span>第 ${page} / ${total} 页</span>${page < total ? `<a class="next" rel="next" href="#p${page + 1}">下一页 ›</a>` : "<span></span>"}</nav>`;
+}
+
 function escape(value: string): string {
   return value.replace(/[&<>"']/g, character => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -85,9 +92,10 @@ function renderEnglish(lesson: Lesson): string {
     + escape(lesson.english.slice(start + excerpt.length));
 }
 
-/** Static, escaped HTML: no scripts, remote assets, server, API calls or embedded JSON. */
+/** Static, escaped HTML: no scripts, remote assets, server, API calls or embedded JSON.
+ *  Over PAGE_SIZE lessons the list splits into pure-CSS (`:target`) pages inside this one offline file. */
 export function renderReview(data: ReviewData): string {
-  const articles = data.lessons.map(lesson => {
+  const renderLesson = (lesson: SavedLesson): string => {
     const grammar = lesson.grammar;
     const vocabulary = lesson.words?.length ? `
 <p class="words"><span class="grammar-label">词语</span>${lesson.words
@@ -98,7 +106,12 @@ export function renderReview(data: ReviewData): string {
 <div class="grammar"><p class="explanation"><span class="grammar-label">语法</span>${escape(grammar.explanation)}</p>${grammar.correction ? `
 <p class="correction">纠正：${escape(grammar.correction)}</p>` : ""}</div>` : ""}
 </article>`;
-  }).join("\n");
+  };
+  const pages = Math.ceil(data.lessons.length / PAGE_SIZE);
+  const list = pages <= 1
+    ? `<div class="reading-list">${data.lessons.map(renderLesson).join("\n") || `<p class="notice">${data.skipped ? "暂无可显示的收藏。" : "还没有收藏。返回 Pi，按 F8 或输入 /coach save 收藏当前表达。"}</p>`}</div>`
+    : Array.from({ length: pages }, (_, page) => `<section class="page" id="p${page + 1}"><div class="reading-list">${data.lessons
+      .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(renderLesson).join("\n")}</div>${pager(page + 1, pages)}</section>`).join("\n");
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -115,6 +128,15 @@ main{max-width:900px;margin:auto;padding:34px 28px 64px}
 header{margin-bottom:23px}
 h1{margin:0;font-size:20px;font-weight:550;letter-spacing:-.4px}
 .reading-list{display:grid;gap:16px}
+.page{display:none}
+.page:target{display:block}
+body:not(:has(.page:target)) .page:first-of-type{display:block}
+@supports not selector(:has(*)){.page{display:block}}
+.pager{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-top:2px;font-size:13px;color:var(--muted)}
+.pager .prev{justify-self:start}
+.pager .next{justify-self:end}
+.pager a{color:inherit;text-decoration:none;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 14px;white-space:nowrap}
+.pager a:hover{border-color:var(--muted)}
 .lesson{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:24px 28px;min-width:0}
 .source{margin:0 0 10px;color:var(--muted);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 .english{margin:0;font:25px/1.6 Georgia,"Times New Roman",serif;letter-spacing:-.25px;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -127,12 +149,13 @@ mark{color:inherit;background:none;text-decoration:underline;text-decoration-col
 .notice{color:var(--muted)}
 ::selection{background:#dce5cd;color:#24321e}
 @media(max-width:600px){main{padding:24px 16px 40px}header{margin-bottom:18px}h1{font-size:19px}.lesson{padding:20px 18px}.english{font-size:23px}}
+@media print{.page{display:block}.pager{display:none}}
 </style>
 </head>
 <body><main>
 <header><h1>表达收藏</h1></header>
 ${data.skipped ? `<p class="notice">有 ${data.skipped} 条收藏无法读取，已跳过；原文件未修改。</p>` : ""}
-<div class="reading-list">${articles || `<p class="notice">${data.skipped ? "暂无可显示的收藏。" : "还没有收藏。返回 Pi，按 F8 或输入 /coach save 收藏当前表达。"}</p>`}</div>
+${list}
 </main></body>
 </html>\n`;
 }

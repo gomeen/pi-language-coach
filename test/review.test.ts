@@ -100,6 +100,28 @@ test("all content is escaped, grammar marks only a literal match and HTML cannot
   assert.match(missingExcerpt, /Don&#39;t implement anything yet/);
 });
 
+test("over ten lessons split into pure-CSS pages with a pager; ten or fewer stay a single list", () => {
+  const lessons = Array.from({ length: 25 }, (_, index) => ({
+    id: String(index).padStart(64, "0"), savedAt: "2026-01-01T00:00:00Z",
+    original: `原文${index}`, english: `Lesson ${index}.`,
+  }));
+  const html = renderReview({ skipped: 0, lessons });
+  assert.equal((html.match(/<section class="page" id="p\d+">/g) ?? []).length, 3);
+  assert.equal((html.match(/<article /g) ?? []).length, 25, "every lesson stays in the single offline file");
+  assert.match(html, /原文0</);
+  assert.match(html, /原文24</);
+  assert.equal((html.match(/class="(?:prev|next)"/g) ?? []).length, 4);
+  assert.match(html, /<span><\/span><span>第 1 \/ 3 页<\/span><a class="next" rel="next" href="#p2">/);
+  assert.match(html, /<a class="prev" rel="prev" href="#p1">/);
+  assert.match(html, /<a class="prev" rel="prev" href="#p2">/);
+  assert.match(html, /<span>第 3 \/ 3 页<\/span><span><\/span><\/nav>/, "the last page has no next link");
+  assert.match(html, /\.page:target\{display:block\}/);
+  assert.doesNotMatch(html, /<script/i);
+  const small = renderReview({ skipped: 0, lessons: lessons.slice(0, 10) });
+  assert.doesNotMatch(small, /class="page"|class="pager"|第 1 \/ 1/);
+  assert.equal((small.match(/<article /g) ?? []).length, 10);
+});
+
 test("missing storage has a helpful empty state; filesystem errors do not masquerade as an empty list", async () => {
   await temporary(async directory => {
     assert.deepEqual(await loadLessons(directory), { lessons: [], skipped: 0 });
