@@ -19,13 +19,13 @@ export function hasResult(state: CoachState): state is Extract<CoachState, { kin
   return state.kind === "ready" || state.kind === "partial";
 }
 
-/** Submitted prompt (when known), then English, then notes; each wraps to as many rows as the terminal width needs. No border or padding. */
-function rows(state: CoachState, prompt?: string): Array<[CoachRow, string]> | undefined {
+/** Submitted prompt (when known and not hidden), then English, then notes; each wraps to as many rows as the terminal width needs. No border or padding. */
+function rows(state: CoachState, prompt?: string, showOriginal = true): Array<[CoachRow, string]> | undefined {
   if (state.kind !== "ready" && state.kind !== "partial") return undefined;
   const words = state.words?.length ? `词：${state.words.map(({ word, meaning }) => `${word} ${meaning}`).join(" · ")}` : "";
   const lines: Array<[CoachRow, string]> = [];
   // Show what was typed this time above the translation for easy comparison; safeText flattens it later.
-  const submitted = prompt?.trim();
+  const submitted = showOriginal ? prompt?.trim() : undefined;
   if (submitted) lines.push(["input", `原文：${submitted}`]);
   lines.push(["english", state.english]);
   if (state.kind === "partial") {
@@ -47,10 +47,11 @@ export class CoachWidget implements Component {
     private readonly colorize: Colorize = (_row, text) => text,
     private readonly notice?: string,
     private readonly prompt?: string,
+    private readonly showOriginal = true,
   ) {}
 
   render(width: number): string[] {
-    const lines = rows(this.getState(), this.prompt);
+    const lines = rows(this.getState(), this.prompt, this.showOriginal);
     if (!lines) return [];
     const columns = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
     if (!columns) return lines.map(() => "");

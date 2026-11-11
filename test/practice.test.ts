@@ -207,6 +207,31 @@ test("no result, or no configuration, means no typing row and a clear hint from 
   assert.match(unconfigured.notifications.at(-1) ?? "", /未配置或已关闭/);
 });
 
+test("SHOW_PRACTICE=false stops the automatic popup; /coach practice still opens it on demand", async () => {
+  const h = uiHarness({}, { PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+    PI_LANGUAGE_COACH_SHOW_PRACTICE: "false" });
+  h.emit({ type: "session_start" });
+  h.input("先梳理目标和计划");
+  await flush();
+  assert.equal(h.row, undefined, "the typing row never opens on its own");
+  assert.ok(h.editor, "the composed editor stays installed for explicit /coach practice");
+  await h.openPractice();
+  assert.ok(h.row, "an explicit /coach practice still opens the row");
+  h.escape();
+});
+
+test("SHOW_ORIGINAL=false hides the submitted line but keeps english and grammar", async () => {
+  const h = uiHarness({}, { PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+    PI_LANGUAGE_COACH_SHOW_ORIGINAL: "false" });
+  h.emit({ type: "session_start" });
+  h.input("先梳理目标和计划");
+  await flush();
+  const panel = h.lines.join("\n");
+  assert.doesNotMatch(panel, /原文：/);
+  assert.match(panel, /Outline the goals first\./);
+  assert.match(panel, /语法：祈使句用动词原形开头。/);
+});
+
 test("practice retains the native main draft, paste storage and cursor without a text round-trip", () => {
   const editor = new CoachEditor(tuiStub, editorTheme, new KeybindingsManager());
   const draft = Array.from({ length: 20 }, (_, i) => `DRAFT_LINE_${i}`).join("\n");

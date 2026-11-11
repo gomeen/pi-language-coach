@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig, type Environment } from "../src/config.ts";
+import { SYSTEM_PROMPT } from "../src/generate.ts";
 
 test("dedicated namespace only, exact defaults and no authentication fallback", () => {
   const read: string[] = [];
@@ -17,6 +21,7 @@ test("dedicated namespace only, exact defaults and no authentication fallback", 
     api: "anthropic-messages",
     apiKey: "test-only", model: "MiniMax-M3.1-Flash", thinking: "medium",
     endpoint: "https://api.minimaxi.com/anthropic/v1/messages",
+    systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
     autoSave: true, timeoutMs: 30000,
   });
   assert.ok(read.every((key) => key.startsWith("PI_LANGUAGE_COACH_")));
@@ -54,6 +59,9 @@ test("invalid environment is disabled without echoing values", () => {
     { MODEL: "bad\x1bmodel" }, { MODEL: "" },
     ...["yes", "on", "", "TRUE", "enabled", "xhigh", "max"].map(THINKING => ({ THINKING })),
     ...["yes", "on", "", "TRUE"].map(AUTO_SAVE => ({ AUTO_SAVE })),
+    ...["yes", "on", "", "TRUE"].map(SHOW_ORIGINAL => ({ SHOW_ORIGINAL })),
+    ...["yes", "on", "", "TRUE"].map(SHOW_PRACTICE => ({ SHOW_PRACTICE })),
+    { PROMPT: "   \n  " }, { PROMPT_FILE: "/nonexistent/coach-prompt.md" },
     { TIMEOUT_MS: "NaN" },
     ...["openai", "h self", "", "MINIMAX"].map(PROVIDER => ({ PROVIDER })),
     { PROVIDER: "deepseek", DEEPSEEK_API_KEY: "test-only-secret", DEEPSEEK_BASE_URL: "https://evil.example.com?secret=value" },
@@ -74,7 +82,9 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
   if (deepseek.kind === "configured") {
     assert.deepEqual(deepseek.config, {
       api: "openai-completions", apiKey: "test-only", model: "deepseek-flash", thinking: "medium",
-      endpoint: "https://api.deepseek.com/chat/completions", autoSave: true, timeoutMs: 30000,
+      endpoint: "https://api.deepseek.com/chat/completions",
+      systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
+      autoSave: true, timeoutMs: 30000,
     });
   }
   const relay = loadConfig({ PI_LANGUAGE_COACH_PROVIDER: "h-self", PI_LANGUAGE_COACH_H_SELF_API_KEY: "test-only" });
@@ -99,4 +109,34 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
   const legacy = loadConfig({ PI_LANGUAGE_COACH_API_KEY: "minimax-key" });
   assert.equal(legacy.kind === "configured" ? legacy.config.model : legacy.kind, "MiniMax-M3.1-Flash",
     "unprefixed names stay the minimax provider so old setups keep working");
+});
+
+test("display toggles and a custom teaching prompt resolve with the documented precedence", async () => {
+  const off = loadConfig({
+    PI_LANGUAGE_COACH_API_KEY: "test-only",
+    PI_LANGUAGE_COACH_SHOW_ORIGINAL: "false", PI_LANGUAGE_COACH_SHOW_PRACTICE: "0",
+    PI_LANGUAGE_COACH_PROMPT: "  自定义教学提示词，必须仍要求返回 JSON。\n",
+  });
+  assert.equal(off.kind, "configured");
+  if (off.kind === "configured") {
+    assert.equal(off.config.showOriginal, false);
+    assert.equal(off.config.showPractice, false);
+    assert.equal(off.config.systemPrompt, "自定义教学提示词，必须仍要求返回 JSON。");
+  }
+  const root = await mkdtemp(join(tmpdir(), "coach-prompt-test-"));
+  try {
+    const file = join(root, "prompt.md");
+    await writeFile(file, "\n文件提示词，覆盖内联文本。\n");
+    const fromFile = loadConfig({
+      PI_LANGUAGE_COACH_API_KEY: "test-only",
+      PI_LANGUAGE_COACH_PROMPT: "inline loses",
+      PI_LANGUAGE_COACH_PROMPT_FILE: file,
+    });
+    assert.equal(fromFile.kind === "configured" ? fromFile.config.systemPrompt : fromFile.kind,
+      "文件提示词，覆盖内联文本。", "PROMPT_FILE wins over PROMPT");
+    const fromInline = loadConfig({ PI_LANGUAGE_COACH_API_KEY: "test-only", PI_LANGUAGE_COACH_PROMPT: "内联提示词" });
+    assert.equal(fromInline.kind === "configured" ? fromInline.config.systemPrompt : fromInline.kind, "内联提示词");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -147,6 +147,16 @@ test("openai-responses protocol sends store:false, input blocks and a reasoning 
     async () => new Response(envelope("completed", "not an array"))), errorCode("invalid"));
 });
 
+test("a configured teaching prompt replaces the built-in one in the system field", async () => {
+  await generate(config({ systemPrompt: "只输出 JSON：{\"english\":string}" }), "先不要实现。", signal(),
+    async (_url, init) => {
+      const payload = JSON.parse(String(init.body));
+      assert.equal(payload.system, "只输出 JSON：{\"english\":string}");
+      assert.doesNotMatch(payload.system, /beginner-friendly/);
+      return response(provider(valid));
+    });
+});
+
 test("outbound coaching JSON excludes paths, complete links and image representations", async () => {
   const prompt = '请检查 /Users/me/PRIVATE_FILE.heic、[PRIVATE_LABEL](https://example.com/private) 和 ![PRIVATE_ALT](data:image/png;base64,PRIVATE_IMAGE)，先别改。 <img src="PRIVATE_IMAGE.png" alt="PRIVATE_ALT">';
   await generate(config(), prompt, signal(), async (_url, init) => {

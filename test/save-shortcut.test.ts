@@ -5,7 +5,7 @@ import type { Generation } from "../src/generate.ts";
 
 const settings = { kind: "configured", config: {
   api: "anthropic-messages", apiKey: "synthetic", model: "synthetic", thinking: "adaptive", endpoint: "http://localhost/v1/messages",
-  autoSave: false, timeoutMs: 1000,
+  systemPrompt: "synthetic", showOriginal: true, showPractice: true, autoSave: false, timeoutMs: 1000,
 } } as const;
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const generation: Generation = { kind: "ready", english: "Hello.", grammar: {

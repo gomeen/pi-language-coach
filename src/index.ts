@@ -27,6 +27,7 @@ export function registerLanguageCoach(
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let autoSaveEnabled = true;
   let autoSaveOverride: boolean | undefined;
+  let showOriginal = true;
   let activeWidget: CoachWidget | undefined;
   let editor: (CustomEditor & PracticeHost) | undefined;
   let editorFactory: Parameters<Context["ui"]["setEditorComponent"]>[0];
@@ -47,7 +48,8 @@ export function registerLanguageCoach(
     }
     ui.setWidget(WIDGET, (_tui, theme) => {
       activeWidget = new CoachWidget(() => state,
-        (row, text) => theme.fg(row === "english" ? "accent" : "muted", text), notice, controller?.prompt);
+        (row, text) => theme.fg(row === "english" ? "accent" : "muted", text), notice,
+        controller?.prompt, showOriginal);
       return activeWidget;
     });
   }
@@ -134,9 +136,11 @@ export function registerLanguageCoach(
     if (ctx.mode !== "tui" || !ctx.hasUI) return undefined;
     settings ??= loadConfig((dependencies.environment ?? (() => process.env))());
     autoSaveEnabled = autoSaveOverride ?? (settings.kind === "configured" ? settings.config.autoSave : false);
+    showOriginal = settings.kind === "configured" && settings.config.showOriginal;
     ui = ctx.ui;
     if (settings.kind === "configured") reconcileEditor();
     if (controller) return controller;
+    const config = settings.kind === "configured" ? settings.config : undefined;
     controller = new CoachController(settings, (state: CoachState) => {
       revision++;
       cancelNotice();
@@ -146,7 +150,8 @@ export function registerLanguageCoach(
         const lesson = controller?.lesson();
         if (lesson && controller) {
           // Local practice never blocks the agent or interrupts an in-progress main draft.
-          openTypingRow(true);
+          // SHOW_PRACTICE=false only stops the automatic popup; /coach practice still opens it.
+          if (config?.showPractice) openTypingRow(true);
           if (autoSaveEnabled) void saveAutomatically(lesson, controller, revision);
         }
       }

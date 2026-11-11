@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { SYSTEM_PROMPT } from "./generate.ts";
+
 export type Provider = "minimax" | "deepseek" | "h-self";
 /** Wire protocol of the configured provider; one coach, three envelope shapes. */
 export type ApiProtocol = "anthropic-messages" | "openai-completions" | "openai-responses";
@@ -9,6 +12,12 @@ export interface CoachConfig {
   /** Adaptive thinking on with an optional effort cap; "disabled" omits the field entirely. */
   readonly thinking: "adaptive" | "disabled" | "low" | "medium" | "high";
   readonly endpoint: string;
+  /** Custom teaching prompt; the resolved value is always present (built-in default when unset). */
+  readonly systemPrompt: string;
+  /** Show the submitted 原文 line above the translation. */
+  readonly showOriginal: boolean;
+  /** Open the practice typing row automatically whenever a fresh result lands. */
+  readonly showPractice: boolean;
   readonly autoSave: boolean;
   readonly timeoutMs: number;
 }
@@ -53,11 +62,22 @@ const apiPath: Record<ApiProtocol, string> = {
   "openai-responses": "/responses",
 };
 
-function autoSave(env: Environment): boolean {
-  const value = env[prefix + "AUTO_SAVE"];
-  if (value === undefined || value === "1" || value === "true") return true;
+function boolean(env: Environment, name: string, fallback: boolean): boolean {
+  const value = env[prefix + name];
+  if (value === undefined) return fallback;
+  if (value === "1" || value === "true") return true;
   if (value === "0" || value === "false") return false;
   throw new Error();
+}
+
+/** Prompt from a file wins over inline text; both fall back to the built-in teaching prompt. */
+function systemPrompt(env: Environment): string {
+  const file = env[prefix + "PROMPT_FILE"];
+  const inline = env[prefix + "PROMPT"];
+  const raw = file !== undefined ? readFileSync(file, "utf8") : inline ?? SYSTEM_PROMPT;
+  const prompt = raw.trim();
+  if (!prompt) throw new Error();
+  return prompt;
 }
 
 function integer(env: Environment, name: string, fallback: number, maximum: number): number {
@@ -106,11 +126,14 @@ export function loadConfig(env: Environment): ConfigResult {
       kind: "configured",
       config: Object.freeze({
         api: preset.api, apiKey, model, thinking, endpoint: url.href,
-        autoSave: autoSave(env),
+        systemPrompt: systemPrompt(env),
+        showOriginal: boolean(env, "SHOW_ORIGINAL", true),
+        showPractice: boolean(env, "SHOW_PRACTICE", true),
+        autoSave: boolean(env, "AUTO_SAVE", true),
         timeoutMs: integer(env, "TIMEOUT_MS", 30000, 300000),
       }),
     };
   } catch {
-    return { kind: "disabled", reason: "学习环境变量无效；请检查专用密钥、地址和数值设置。" };
+    return { kind: "disabled", reason: "学习环境变量无效；请检查专用密钥、地址、数值和提示词设置。" };
   }
 }

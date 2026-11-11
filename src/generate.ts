@@ -370,5 +370,5 @@ export async function generate(
 ): Promise<Generation> {
   const text = stripPathsAndLinks(prompt);
   if (!hasProse(text) && text !== prompt) throw new GenerationError("invalid");
-  return parsePayload(await complete(config, SYSTEM_PROMPT, text, signal, fetcher), text);
+  return parsePayload(await complete(config, config.systemPrompt, text, signal, fetcher), text);
 }

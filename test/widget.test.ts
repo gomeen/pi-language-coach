@@ -58,6 +58,9 @@ test("the submitted prompt is shown above the translation, never displacing the 
   assert.equal(new CoachWidget(() => state, (_row, text) => text, undefined, "a\nb").render(200)[0], "原文：a b");
   // No or blank prompt keeps the two-row layout for older callers.
   assert.deepEqual(new CoachWidget(() => state).render(200), ["I have a bug.", "语法：have 表状态。"]);
+  // SHOW_ORIGINAL=false hides the submitted line even when the prompt is known.
+  const hidden = new CoachWidget(() => state, (_row, text) => text, undefined, "I has a bug.", false).render(200);
+  assert.deepEqual(hidden, ["I have a bug.", "语法：have 表状态。"]);
   assert.equal(new CoachWidget(() => state, (_row, text) => text, undefined, " \n ").render(200).length, 2);
   // The save notice still prepends to the notes row only.
   const notice = new CoachWidget(() => state, (_row, text) => text, "已收藏", "I has a bug.").render(200);

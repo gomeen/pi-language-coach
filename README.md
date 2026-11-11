@@ -108,6 +108,29 @@ export PI_LANGUAGE_COACH_THINKING='disabled'   # 关闭思考，换取更快响�
 
 各地址覆盖变量是对应协议的根地址，不要带路径后缀（`/v1/messages`、`/chat/completions`、`/responses` 由扩展按协议追加）；仅支持 HTTPS（本机 HTTP 用于测试），拒绝带 URL 账号、查询参数或 fragment 的地址，并且不跟随重定向。所有协议都用非流式请求。自定义地址会收到当前提示词和专用 key，请只使用可信服务。
 
+### 面板显示与练习框
+
+两个显示开关默认都开启，只改展示，不影响收藏内容（收藏始终包含完整原文、英文和语法）：
+
+```bash
+export PI_LANGUAGE_COACH_SHOW_ORIGINAL='false'   # 不在译文上方显示「原文：」行
+export PI_LANGUAGE_COACH_SHOW_PRACTICE='false'   # 结果出来后不再自动弹出「输入一遍」练习框
+```
+
+`SHOW_PRACTICE=false` 只关闭自动弹出；想练习时仍可运行 `/coach practice` 手动打开，回车或 Esc 关闭。
+
+### 自定义教学提示词
+
+不设置时使用内置教学提示词（要求返回固定 JSON：english、words、grammar）。可以完整替换：
+
+```bash
+export PI_LANGUAGE_COACH_PROMPT='你自己的完整提示词'
+# 或指向一个 UTF-8 文本文件（优先级高于 PROMPT）：
+export PI_LANGUAGE_COACH_PROMPT_FILE='/absolute/path/to/prompt.md'
+```
+
+替换是整体替换，内置提示词的格式要求（固定 JSON 形状、词语必须出现在英文中、语法点约束等）不会自动保留；若自定义提示词导致返回无法解析或缺少字段，面板会保留可用部分并标注缺失，不会报错中断主任务。路径需是本机可读的文本文件；读取失败时学习功能停用并在提示中说明。
+
 ### 可选配置
 
 | 环境变量 | 默认值 | 含义 |
@@ -120,6 +143,10 @@ export PI_LANGUAGE_COACH_THINKING='disabled'   # 关闭思考，换取更快响�
 | `PI_LANGUAGE_COACH_BASE_URL` | `https://api.minimaxi.com/anthropic` | minimax 的 Anthropic 兼容根地址；deepseek/h-self 用各自的 `…_DEEPSEEK_BASE_URL` / `…_H_SELF_BASE_URL` |
 | `PI_LANGUAGE_COACH_AUTO_SAVE` | `true` | 默认自动收藏有效英文结果；设为 `false` 或 `0` 可永久关闭（重启 Pi 后生效），仍可手动收藏 |
 | `PI_LANGUAGE_COACH_TIMEOUT_MS` | `30000` | 单次学习请求超时，毫秒 |
+| `PI_LANGUAGE_COACH_SHOW_ORIGINAL` | `true` | 译文上方是否显示「原文：」行 |
+| `PI_LANGUAGE_COACH_SHOW_PRACTICE` | `true` | 每个新结果后是否自动弹出「输入一遍」练习框；`/coach practice` 不受影响 |
+| `PI_LANGUAGE_COACH_PROMPT` | 内置提示词 | 整体替换教学提示词；输出仍须是约定 JSON 形状 |
+| `PI_LANGUAGE_COACH_PROMPT_FILE` | 无 | 从 UTF-8 文件读取提示词，优先于 `PROMPT` |
 
 ## 使用
 
