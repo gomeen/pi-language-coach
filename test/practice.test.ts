@@ -4,6 +4,9 @@ import type { ExtensionAPI, ExtensionContext, InputEvent } from "@earendil-works
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import { CURSOR_MARKER, visibleWidth, type Component, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CoachEditor, enhanceWithPractice, PracticeInput } from "../src/practice.ts";
 import { registerLanguageCoach, type Dependencies } from "../src/index.ts";
 import type { Environment } from "../src/config.ts";
@@ -12,6 +15,7 @@ import type { Lesson } from "../src/storage.ts";
 
 const generation: Generation = { kind: "ready", english: "Outline the goals first.", grammar: {
   excerpt: "Outline", pattern: "动词开头", explanation: "祈使句用动词原形开头。" } };
+const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-practice-"));
 const flush = async (times = 3) => { for (let i = 0; i < times; i++) await new Promise(resolve => setImmediate(resolve)); };
 
 const tuiStub = { terminal: { rows: 40 }, requestRender() {} } as TUI;
@@ -78,7 +82,7 @@ type HarnessEvent = InputEvent | { type: "session_start" | "session_shutdown" | 
 type Handler = (event: HarnessEvent, ctx: HarnessContext) => unknown;
 type Row = { handleInput(data: string): void; render(width: number): string[] };
 
-function uiHarness(dependencies: Dependencies = {}, environment: Environment = { PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false" }) {
+function uiHarness(dependencies: Dependencies = {}, environment: Environment = { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false" }) {
   const handlers = new Map<string, Handler>();
   const shortcuts = new Map<string, (ctx: HarnessContext) => unknown>();
   const saved: Lesson[] = [];
@@ -197,7 +201,7 @@ test("no result, or no configuration, means no typing row and a clear hint from 
   const withoutResult = uiHarness();
   await withoutResult.openPractice();
   assert.match(withoutResult.notifications.at(-1) ?? "", /还没有可输入的表达/);
-  const unconfigured = uiHarness({}, { PI_LANGUAGE_COACH_API_KEY: "" });
+  const unconfigured = uiHarness({}, { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "" });
   unconfigured.emit({ type: "session_start" });
   unconfigured.input("先梳理目标和计划");
   await flush();
@@ -208,7 +212,7 @@ test("no result, or no configuration, means no typing row and a clear hint from 
 });
 
 test("SHOW_PRACTICE=false stops the automatic popup; /coach practice still opens it on demand", async () => {
-  const h = uiHarness({}, { PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+  const h = uiHarness({}, { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
     PI_LANGUAGE_COACH_SHOW_PRACTICE: "false" });
   h.emit({ type: "session_start" });
   h.input("先梳理目标和计划");
@@ -221,7 +225,7 @@ test("SHOW_PRACTICE=false stops the automatic popup; /coach practice still opens
 });
 
 test("SHOW_ORIGINAL=false hides the submitted line but keeps english and grammar", async () => {
-  const h = uiHarness({}, { PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+  const h = uiHarness({}, { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "synthetic", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
     PI_LANGUAGE_COACH_SHOW_ORIGINAL: "false" });
   h.emit({ type: "session_start" });
   h.input("先梳理目标和计划");

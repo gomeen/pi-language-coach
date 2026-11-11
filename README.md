@@ -54,6 +54,29 @@ pi
 
 缺少当前供应商的 key 时，主任务不受影响，学习面板保持隐藏，提示中会写明缺少哪个变量；deepseek 和 h-self 永远不会读 `PI_LANGUAGE_COACH_API_KEY`，旧的 minimax 变量也不会泄漏到其他供应商。
 
+### 配置文件（推荐：集中在一处）
+
+所有配置也可以写进一个 JSON 文件：`~/.pi/agent/language-coach/config.json`（与收藏目录同处，建议权限 600）：
+
+```json
+{
+  "provider": "h-self",
+  "thinking": "medium",
+  "showOriginal": true,
+  "showPractice": true,
+  "autoSave": true,
+  "timeoutMs": 30000,
+  "promptFile": "prompt.md",
+  "providers": {
+    "minimax":  { "apiKey": "…", "baseUrl": "…", "model": "…" },
+    "deepseek": { "apiKey": "…", "baseUrl": "…", "model": "…" },
+    "h-self":   { "apiKey": "…", "baseUrl": "…", "model": "…" }
+  }
+}
+```
+
+所有字段均可省略（省略即用预设默认）；`promptFile` 相对于 language-coach 目录解析，`prompt` 可直接内联文本，两者都不写则用内置提示词。优先级为：环境变量 > config.json > 内置默认，按字段逐项生效；文件不存在完全等价于未配置，格式错误会明确停用学习功能并指出文件。不需要 shell 环境变量的用户可以只用这一个文件。
+
 PowerShell：
 
 ```powershell
@@ -133,7 +156,7 @@ export PI_LANGUAGE_COACH_PROMPT_FILE='/absolute/path/to/prompt.md'
 
 ### 可选配置
 
-| 环境变量 | 默认值 | 含义 |
+| 环境变量（均可在 config.json 中以同名字段替代，环境变量优先） | 默认值 | 含义 |
 | --- | --- | --- |
 | `PI_LANGUAGE_COACH_PROVIDER` | `minimax` | 学习服务供应商：`minimax`、`deepseek`、`h-self`（OpenAI Responses 中转站） |
 | `PI_LANGUAGE_COACH_API_KEY` | 无 | minimax 的独立学习 key；deepseek/h-self 不读这个变量 |

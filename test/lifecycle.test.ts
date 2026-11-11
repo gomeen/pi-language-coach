@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { registerLanguageCoach, type Dependencies } from "../src/index.ts";
@@ -10,6 +13,7 @@ import { ReviewOpenError } from "../src/review.ts";
 
 type Host = Pick<ExtensionAPI, "on" | "registerCommand" | "registerShortcut">;
 type WidgetFactory = Exclude<Parameters<ExtensionContext["ui"]["setWidget"]>[1], undefined>;
+const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-lifecycle-"));
 type HarnessContext = Pick<ExtensionContext, "mode" | "hasUI"> & {
   ui: Pick<ExtensionContext["ui"], "setWidget" | "notify" | "getEditorComponent" | "setEditorComponent">;
 };
@@ -60,7 +64,7 @@ function harness(dependencies: Dependencies = {}, mode: ExtensionContext["mode"]
     },
   });
   registerLanguageCoach(host, {
-    environment: () => ({ PI_LANGUAGE_COACH_API_KEY: "fake-only", PI_LANGUAGE_COACH_AUTO_SAVE: "false" }),
+    environment: () => ({ PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake-only", PI_LANGUAGE_COACH_AUTO_SAVE: "false" }),
     save: async lesson => { saved.push(lesson); return "saved"; },
     ...dependencies,
   });
@@ -183,7 +187,7 @@ test("latest request wins even when transport ignores abort; skipped input cance
 test("skips stay hidden, long Unicode inputs are sent intact, English is eligible", async () => {
   const work = deferredGenerator();
   const h = harness({ generate: work.generate, environment: () => ({
-    PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+    PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
   }) });
   for (const [text, extras] of [
     ["", {}], [" \n ", {}], ["/command", {}], ["  !echo hi", {}],
@@ -244,8 +248,8 @@ test("headless/RPC/extension sources never read environment or request coaching"
 
 test("missing/invalid config stays unmounted on input and /coach", async () => {
   for (const environment of [
-    { ANTHROPIC_API_KEY: "SECRET-FALLBACK" },
-    { PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_BASE_URL: "https://u:SECRET@host.invalid" },
+    { PI_CODING_AGENT_DIR: AGENT_DIR, ANTHROPIC_API_KEY: "SECRET-FALLBACK" },
+    { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_BASE_URL: "https://u:SECRET@host.invalid" },
   ] satisfies Environment[]) {
     let calls = 0;
     const h = harness({ environment: () => environment, generate: async () => { calls++; return ready("wrong"); } });
@@ -314,7 +318,7 @@ test("session start/tree/shutdown invalidate old owners, forget prompts and reje
     let environmentReads = 0;
     const h = harness({ generate: work.generate, environment: () => {
       environmentReads++;
-      return { PI_LANGUAGE_COACH_API_KEY: "fake" };
+      return { PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake" };
     } });
     h.emit({ type: "session_start" });
     h.input("old session SECRET"); await tick();
@@ -410,7 +414,7 @@ test("late save completion cannot resurrect UI after clear, new input or session
 test("default autosave persists only completed visible lessons; duplicate, skip and stale results add nothing", async () => {
   const work = deferredGenerator();
   const h = harness({ generate: work.generate,
-    environment: () => ({ PI_LANGUAGE_COACH_API_KEY: "fake" }) });
+    environment: () => ({ PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake" }) });
   h.input("自动收藏的中文原文"); await tick();
   assert.equal(h.saved.length, 0);
   work.calls[0]!.resolve(ready("Complete English.")); await tick();
@@ -432,7 +436,7 @@ test("default autosave persists only completed visible lessons; duplicate, skip 
 
 test("autosave off remains manual-saveable; on applies to later completions without retranslation", async () => {
   const work = deferredGenerator();
-  const h = harness({ generate: work.generate, environment: () => ({ PI_LANGUAGE_COACH_API_KEY: "fake" }) });
+  const h = harness({ generate: work.generate, environment: () => ({ PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake" }) });
   await h.command("autosave off");
   h.input("private"); await tick();
   work.calls[0]!.resolve(ready("Private.")); await tick();

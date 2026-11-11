@@ -191,6 +191,7 @@ export default function (pi) {
            'SMOKE_CONTROL_ANSWER': str(control_answer),
            'PI_CODING_AGENT_DIR': str(agent), 'PI_OFFLINE': '1', 'PI_TELEMETRY': '0',
            'PI_LANGUAGE_COACH_API_KEY': 'synthetic-coach-key',
+           'PI_LANGUAGE_COACH_PROVIDER': 'minimax',
            'PI_LANGUAGE_COACH_AUTO_SAVE': 'false',
            'PI_LANGUAGE_COACH_BASE_URL': base + '/coach', 'PI_LANGUAGE_COACH_MODEL': 'smoke-coach'}
     proc = subprocess.Popen([shutil.which('pi'), '--no-extensions', '--no-skills', '--no-mcp',

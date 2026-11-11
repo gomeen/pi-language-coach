@@ -2,11 +2,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { loadConfig, type CoachConfig } from "../src/config.ts";
 import { contradictsEnding, generate, GenerationError, inventsPhrase, parseWords, SYSTEM_PROMPT, usesFormula, type Fetch } from "../src/generate.ts";
 
+const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-gen-"));
+
 export function config(overrides: Partial<CoachConfig> = {}): CoachConfig {
-  const result = loadConfig({ PI_LANGUAGE_COACH_API_KEY: "fake-dedicated-key" });
+  const result = loadConfig({ PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake-dedicated-key" });
   assert.equal(result.kind, "configured");
   if (result.kind !== "configured") throw new Error("test setup");
   return { ...result.config, ...overrides };
