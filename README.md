@@ -42,12 +42,17 @@ pi remove /absolute/path/to/pi-language-coach
 
 **每位使用者必须自己配置学习请求的 key。扩展不读取 Pi 的 `auth.json`，不自动复用主模型密钥。**
 
-在启动 Pi 的同一个终端设置：
+在启动 Pi 的同一个终端设置（用 `PROVIDER` 选供应商，每个供应商只读自己的 key 变量，可以在同一终端同时配置多个供应商，切换只改 `PROVIDER`）：
 
 ```bash
-export PI_LANGUAGE_COACH_API_KEY='填写你自己的 MiniMax key'
+export PI_LANGUAGE_COACH_PROVIDER='h-self'                          # minimax（默认）| deepseek | h-self
+export PI_LANGUAGE_COACH_API_KEY='填写你自己的 MiniMax key'          # provider=minimax 时读取
+export PI_LANGUAGE_COACH_DEEPSEEK_API_KEY='填写你自己的 DeepSeek key' # provider=deepseek 时读取
+export PI_LANGUAGE_COACH_H_SELF_API_KEY='填写你自己的中转站 key'      # provider=h-self 时读取
 pi
 ```
+
+缺少当前供应商的 key 时，主任务不受影响，学习面板保持隐藏，提示中会写明缺少哪个变量；deepseek 和 h-self 永远不会读 `PI_LANGUAGE_COACH_API_KEY`，旧的 minimax 变量也不会泄漏到其他供应商。
 
 PowerShell：
 
@@ -60,9 +65,17 @@ pi
 
 环境变量在会话初始化时读取；修改后重新启动 Pi。缺少 key 时，主任务不受影响，学习面板保持隐藏，不占空行。
 
-### 模型与接口
+### 供应商与模型
 
-学习模型固定，不跟随 `/model` 切换。默认使用实测速度最快的 **`MiniMax-M3.1-Flash`**（同形状请求延迟约为 M3 的一半，单价也是 M3 一半），中国区 Anthropic 兼容接口：
+学习模型固定，不跟随 `/model` 切换。`PI_LANGUAGE_COACH_PROVIDER` 选择内置供应商，每个供应商自带接口协议、默认地址和默认模型：
+
+| Provider | 协议 | 默认地址 | 默认模型 | key 变量 | 地址 / 模型覆盖变量 |
+| --- | --- | --- | --- | --- | --- |
+| `minimax`（默认） | Anthropic Messages | `https://api.minimaxi.com/anthropic` | `MiniMax-M3.1-Flash` | `PI_LANGUAGE_COACH_API_KEY` | `PI_LANGUAGE_COACH_BASE_URL` / `PI_LANGUAGE_COACH_MODEL` |
+| `deepseek` | OpenAI Chat Completions | `https://api.deepseek.com` | `deepseek-flash`（DeepSeek V4.1 Flash） | `PI_LANGUAGE_COACH_DEEPSEEK_API_KEY` | `PI_LANGUAGE_COACH_DEEPSEEK_BASE_URL` / `PI_LANGUAGE_COACH_DEEPSEEK_MODEL` |
+| `h-self` | OpenAI Responses | `https://ai.yuchuantest.com/v1` | `gpt-5.6-luna` | `PI_LANGUAGE_COACH_H_SELF_API_KEY` | `PI_LANGUAGE_COACH_H_SELF_BASE_URL` / `PI_LANGUAGE_COACH_H_SELF_MODEL` |
+
+`h-self` 预设按 OpenAI Responses 协议中转站接入，请求固定 `store: false`；指向其他 OpenAI 兼容中转站时改用各自的 `_BASE_URL` 覆盖变量即可。追加的路径由协议自动确定：`/v1/messages`、`/chat/completions`、`/responses`（deepseek 官方地址不带 `/v1`，中转站地址一般带）。默认使用实测速度最快的 **`MiniMax-M3.1-Flash`**（同形状请求延迟约为 M3 的一半，单价也是 M3 一半）：
 
 ```bash
 export PI_LANGUAGE_COACH_MODEL='MiniMax-M3.1-Flash'
@@ -86,21 +99,25 @@ export PI_LANGUAGE_COACH_MODEL='MiniMax-M3'
 
 接受值：`adaptive`（开思考，深度由模型自定）、`low` / `medium` / `high`（开思考并加 effort 上限）、`disabled`（关思考，请求中省略该字段）。注意：**M3 只有开/关两档**，实测忽略 `output_config.effort`，档位不改变其思考深度；若把 `PI_LANGUAGE_COACH_MODEL` 换回 M3，思考档位仅有 `adaptive` 与 `disabled` 有区别。无法关闭思考的模型会拒绝显式 `disabled`，因此关闭时扩展直接省略该字段。
 
+档位按协议映射：minimax 发送 `thinking: {"type":"adaptive"}` 加 `output_config.effort`；deepseek 的思考只有开/关（`thinking:{"type":"enabled"}` / `{"type":"disabled"}`），`low`/`medium`/`high` 都映射为开，与 Pi 的接入一致；OpenAI Responses 协议发送 `reasoning:{"effort":档位}`，`disabled` 发送 `effort:"none"`，`adaptive` 省略该字段（由服务端默认档位决定）。
+
 ```bash
 export PI_LANGUAGE_COACH_THINKING='medium'    # 默认：思考开，深度中等
 export PI_LANGUAGE_COACH_THINKING='disabled'   # 关闭思考，换取更快响应
 ```
 
-`BASE_URL` 是 Anthropic 兼容接口根地址，不要加 `/v1/messages`；扩展会追加该路径。仅支持 HTTPS（本机 HTTP 用于测试），拒绝带 URL 账号、查询参数或 fragment 的地址，并且不跟随重定向。它使用非流式 Anthropic Messages 请求，**不是** OpenAI `/chat/completions` 接口。自定义地址会收到当前提示词和专用 key，请只使用可信服务。
+各地址覆盖变量是对应协议的根地址，不要带路径后缀（`/v1/messages`、`/chat/completions`、`/responses` 由扩展按协议追加）；仅支持 HTTPS（本机 HTTP 用于测试），拒绝带 URL 账号、查询参数或 fragment 的地址，并且不跟随重定向。所有协议都用非流式请求。自定义地址会收到当前提示词和专用 key，请只使用可信服务。
 
 ### 可选配置
 
 | 环境变量 | 默认值 | 含义 |
 | --- | --- | --- |
-| `PI_LANGUAGE_COACH_API_KEY` | 无，必填 | 独立学习请求的 MiniMax key |
-| `PI_LANGUAGE_COACH_MODEL` | `MiniMax-M3.1-Flash` | 发送给服务的准确模型 ID |
-| `PI_LANGUAGE_COACH_THINKING` | `medium` | `adaptive`（开思考，深度模型自定）、`low`/`medium`/`high`（思考 effort 上限）、`disabled`（关思考，请求中省略字段）；M3 忽略档位 |
-| `PI_LANGUAGE_COACH_BASE_URL` | `https://api.minimaxi.com/anthropic` | Anthropic 兼容根地址 |
+| `PI_LANGUAGE_COACH_PROVIDER` | `minimax` | 学习服务供应商：`minimax`、`deepseek`、`h-self`（OpenAI Responses 中转站） |
+| `PI_LANGUAGE_COACH_API_KEY` | 无 | minimax 的独立学习 key；deepseek/h-self 不读这个变量 |
+| `PI_LANGUAGE_COACH_DEEPSEEK_API_KEY` / `PI_LANGUAGE_COACH_H_SELF_API_KEY` | 无 | 对应供应商的独立学习 key |
+| `PI_LANGUAGE_COACH_MODEL` | `MiniMax-M3.1-Flash` | minimax 的准确模型 ID；deepseek/h-self 用各自的 `…_DEEPSEEK_MODEL` / `…_H_SELF_MODEL` |
+| `PI_LANGUAGE_COACH_THINKING` | `medium` | `adaptive`（开思考，深度模型自定）、`low`/`medium`/`high`（思考 effort 上限）、`disabled`（关思考）；按协议映射（见上）；M3 忽略档位 |
+| `PI_LANGUAGE_COACH_BASE_URL` | `https://api.minimaxi.com/anthropic` | minimax 的 Anthropic 兼容根地址；deepseek/h-self 用各自的 `…_DEEPSEEK_BASE_URL` / `…_H_SELF_BASE_URL` |
 | `PI_LANGUAGE_COACH_AUTO_SAVE` | `true` | 默认自动收藏有效英文结果；设为 `false` 或 `0` 可永久关闭（重启 Pi 后生效），仍可手动收藏 |
 | `PI_LANGUAGE_COACH_TIMEOUT_MS` | `30000` | 单次学习请求超时，毫秒 |
 

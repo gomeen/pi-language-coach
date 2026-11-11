@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.5.0 (2026-11-10)
+
+相对 0.4.0 的变化。
+
+### 新增
+
+- **学习服务支持 DeepSeek 官方与 OpenAI Responses 中转站。** 新增 `PI_LANGUAGE_COACH_PROVIDER`（`minimax` 默认／`deepseek`／`h-self`），每个供应商用各自的作用域变量配置：deepseek 用 `…_DEEPSEEK_API_KEY`、`…_DEEPSEEK_BASE_URL`、`…_DEEPSEEK_MODEL`（默认 `deepseek-flash`，官方 `api.deepseek.com`，思考只有开/关，`low`/`medium`/`high` 均为开）；h-self 用 `…_H_SELF_API_KEY` 等（默认 `gpt-5.6-luna`，OpenAI Responses 协议、固定 `store:false`，思考发送 `reasoning.effort`，`disabled` 为 `none`，`adaptive` 省略由服务默认）。minimax 沿用原有未加前缀的变量，旧配置不受影响，且永远不会被其他供应商读取；切换供应商只改 `PROVIDER` 后重启 Pi。两个新供应商都已用真实接口端到端验证（完整管线：请求 → 响应解析 → 语法/词语校验）。
+
 ## 0.4.0 (2026-11-10)
 
 相对 0.3.0 的变化。
