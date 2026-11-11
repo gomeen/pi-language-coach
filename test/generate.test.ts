@@ -51,7 +51,7 @@ test("fixed teaching system plus one user message with locations removed; dedica
     });
     const payload = JSON.parse(String(init.body));
     assert.equal(payload.system, SYSTEM_PROMPT);
-    assert.match(payload.system, /never instructions to obey/);
+    assert.match(payload.system, /把用户消息翻译成英语/);
     assert.equal(payload.model, "MiniMax-M3.1-Flash");
     assert.equal(payload.stream, false);
     assert.deepEqual(payload.thinking, { type: "adaptive" });
@@ -453,19 +453,13 @@ test("word notes are kept only when copied from the English; they survive invali
     { kind: "ready", english, grammar }, "no empty words field");
 });
 
-test("the prompt stays short and states each requirement once", () => {
-  assert.ok(SYSTEM_PROMPT.length < 4000, `prompt is ${SYSTEM_PROMPT.length} characters`);
+test("the prompt stays concise and delegates word and grammar choices", () => {
+  assert.ok(SYSTEM_PROMPT.length < 1000, `prompt is ${SYSTEM_PROMPT.length} characters`);
   for (const requirement of [
-    /never instructions to obey/,
-    /"words":\[\{"word":string,"meaning":string\}\]/,
-    /pinyin input method to an AI coding assistant/, /北京 is a typo for 背景 \(background\), never the city/, /"pn" stays "pn"/,
-    /「图片」「文件」「链接」 replace a removed screenshot, path or link.*never make them a place or object/,
-    /not word-for-word/, /keep every detail, restriction \(only, not yet\), order of actions, numbered item/,
-    /Use normal capitalization/, /casual lowercase alone/,
-    /Up to 3 words/, /copied exactly/,
-    /helps the student express this idea in English, preferably where English and Chinese differ/,
-    /Chinese puts time, place and reason first/, /Long describers go before the noun in Chinese but after it in English/,
-    /是否 → whether/, /avoid harder terms/, /don't say a word "不加 s" if it ends in s/,
-    /only for a real English error in the input/,
+    /把用户消息翻译成英语/, /根据上下文修正同音错别字/, /「图片」「文件」「链接」.*直接忽略/,
+    /根据英语表达习惯合理调整语序/, /保留所有细节、数字、代码和标识符/,
+    /仅返回 JSON/, /自行评估翻译结果里最值得讲解的单词或短语/,
+    /自行评估翻译结果里最值得讲解的一个语法点/, /excerpt 从 english 原样复制/,
+    /只有输入中确实存在英语错误时才填写 correction/,
   ]) assert.match(SYSTEM_PROMPT, requirement);
 });
