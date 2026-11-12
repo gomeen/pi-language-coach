@@ -1,7 +1,7 @@
 import type { CoachConfig, ConfigResult } from "./config.ts";
 import { generate, GenerationError, type Generation } from "./generate.ts";
 import type { Lesson } from "./storage.ts";
-import { hasProse, stripPathsAndLinks } from "./input.ts";
+import { hasProse, stripImageReferences, stripPathsAndLinks } from "./input.ts";
 
 export type CoachState =
   | { kind: "idle"; message?: string }
@@ -45,8 +45,11 @@ export class CoachController {
 
   initial(): void { this.publish(this.state); }
 
-  /** Prompt of the most recent eligible submit; the widget shows it above the translation. */
-  get prompt(): string | undefined { return this.lastPrompt; }
+  /** Prompt of the most recent eligible submit; the widget shows it above the translation.
+   *  Pasted image locations are shown as 「图片」, so a clipboard path never reaches the panel. */
+  get prompt(): string | undefined {
+    return this.lastPrompt === undefined ? undefined : stripImageReferences(this.lastPrompt);
+  }
 
   private cancel(): void {
     this.version++;
@@ -144,7 +147,8 @@ export class CoachController {
     if (!this.alive || !this.enabled || this.lastPrompt === undefined ||
         (this.state.kind !== "ready" && this.state.kind !== "partial")) return undefined;
     return {
-      original: this.lastPrompt,
+      // Only image locations are dropped: a typed file name or link stays in the saved original.
+      original: stripImageReferences(this.lastPrompt),
       english: this.state.english,
       ...(this.state.kind === "ready" ? { grammar: { ...this.state.grammar } } : {}),
       ...(this.state.words?.length ? { words: this.state.words.map(({ word, meaning }) => ({ word, meaning })) } : {}),

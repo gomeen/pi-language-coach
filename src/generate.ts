@@ -1,7 +1,7 @@
 import type { ApiProtocol, CoachConfig } from "./config.ts";
 import { hasProse, stripPathsAndLinks } from "./input.ts";
 
-export const SYSTEM_PROMPT = `把用户消息翻译成英语，根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯合理调整语序；保留所有细节、数字、代码和标识符。请仅返回 JSON：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}；在 words 中自行评估翻译结果里最值得讲解的单词或短语，给出简短中文释义；在 grammar 中自行评估翻译结果里最值得讲解的一个语法点，excerpt 从 english 原样复制，pattern 用简短中文概括，explanation 用简洁中文说明；只有输入中确实存在英语错误时才填写 correction，格式为 "before → after"，否则省略。`;
+export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。仅返回 JSON：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。words 列最值得讲解的单词或短语，跳过基础词，word 用 english 里的原样拼写，meaning 写简短中文释义，输入里用中文写的词优先给出对应英文说法。grammar 讲最值得讲解的一个语法点：excerpt 从 english（而非输入）原样复制；pattern 和 explanation 用简洁中文，不用「动词 + 名词」这类公式，也不用从句、不定式、情态动词这类术语；输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
 
 export interface Grammar {
   excerpt: string;

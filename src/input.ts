@@ -16,7 +16,7 @@ export function hasProse(text: string): boolean {
 }
 
 /** Remove Markdown labels and destinations together, including nested parentheses in destinations. */
-function stripInlineLinks(text: string): string {
+function stripInlineLinks(text: string, imagesOnly: boolean): string {
   const link = /!?\[[^\]\n]*\]\s*\(/g;
   let output = "";
   let copied = 0;
@@ -38,38 +38,52 @@ function stripInlineLinks(text: string): string {
       else if (character === ")") depth--;
     }
     if (depth) break; // Bound malformed-link scanning; bare-location filtering still runs below.
-    output += text.slice(copied, match.index) + (match[0].startsWith("!") ? IMAGE : LINK);
+    // An image reference always goes; a link keeps its label and destination as written.
+    output += text.slice(copied, match.index) + (match[0].startsWith("!") ? IMAGE
+      : imagesOnly ? text.slice(match.index, end) : LINK);
     copied = end;
     link.lastIndex = end;
   }
   return output + text.slice(copied);
 }
 
-/** Best-effort removal of file locations, complete links and image references, only for coaching. */
+/** File locations, complete links and image references, only for coaching. */
 export function stripPathsAndLinks(text: string): string {
+  return stripLocations(text, false);
+}
+
+/** Only image references become 「图片」, so a saved original keeps typed file names and links. */
+export function stripImageReferences(text: string): string {
+  return stripLocations(text, true);
+}
+
+function stripLocations(text: string, imagesOnly: boolean): string {
   const original = text;
   // No labels, alt text, reference definitions, image tags or encoded image bodies go to coaching.
   const references = new Set<string>();
   const referenceId = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-  text = text.replace(/^[ \t]{0,3}\[([^\]\n]+)\]:[^\r\n]*(?:\r?\n|$)/gm, (_match, id: string) => {
+  text = text.replace(/^[ \t]{0,3}\[([^\]\n]+)\]:[^\r\n]*(?:\r?\n|$)/gm, (match, id: string) => {
     references.add(referenceId(id));
-    return "";
+    return imagesOnly ? match : "";
   });
-  text = stripInlineLinks(text);
+  text = stripInlineLinks(text, imagesOnly);
   text = text.replace(/(!?)\[([^\]\n]*)\](?:[ \t]*\[([^\]\n]*)\])?/g,
-    (match, image: string, label: string, id: string | undefined) =>
-      image ? IMAGE : id !== undefined || references.has(referenceId(label)) ? LINK : match);
+    (match, image: string, label: string, id: string | undefined) => image ? IMAGE
+      : imagesOnly ? match : id !== undefined || references.has(referenceId(label)) ? LINK : match);
   text = text.replace(/<(a|picture)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>/gi,
-    (_match, tag: string) => tag.toLowerCase() === "a" ? LINK : IMAGE);
+    (match, tag: string) => tag.toLowerCase() === "a" ? (imagesOnly ? match : LINK) : IMAGE);
   text = text.replace(/<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, IMAGE);
   text = text.replace(/\[(?:image|图片)\s*#?\s*\d+\]/gi, IMAGE);
   text = text.replace(new RegExp(String.raw`\b(?:data:[\w.+-]+\/[^${STOP}]+|blob:[^${STOP}]+)`, "giu"), IMAGE);
-  text = text.replace(/<(?:(?:https?|ftp|file):\/\/|mailto:)[^>\n]+>/gi, LINK);
+  text = text.replace(/<(?:(?:https?|ftp|file):\/\/|mailto:)[^>\n]+>/gi, value => imagesOnly ? value : LINK);
   // Preserve sentence punctuation following a bare location.
   const replace = (marker: string) => (value: string) => marker + (/[.,;:!?]+$/.exec(value)?.[0] ?? "");
-  const location = (value: string) => replace(imageLike(value) ? IMAGE : FILE)(value);
-  text = text.replace(new RegExp(String.raw`\b(?:[a-z][a-z\d+.-]*:\/\/|www\.)[^${STOP}]+`, "giu"), replace(LINK));
-  text = text.replace(new RegExp(String.raw`(?<![\w@.-])(?:[a-z\d-]+\.)+(?:com|org|net|edu|gov|io|ai|dev|app|cn|uk|cloud|test|invalid)(?![\w-])(?::\d+)?(?:[/?#][^${STOP}]*)?`, "giu"), replace(LINK));
+  // A file path or link is a location too; an image location is the only one removed here on request.
+  const location = (value: string) => imageLike(value) ? replace(IMAGE)(value)
+    : imagesOnly ? value : replace(FILE)(value);
+  const replaceLink = imagesOnly ? (value: string) => value : replace(LINK);
+  text = text.replace(new RegExp(String.raw`\b(?:[a-z][a-z\d+.-]*:\/\/|www\.)[^${STOP}]+`, "giu"), replaceLink);
+  text = text.replace(new RegExp(String.raw`(?<![\w@.-])(?:[a-z\d-]+\.)+(?:com|org|net|edu|gov|io|ai|dev|app|cn|uk|cloud|test|invalid)(?![\w-])(?::\d+)?(?:[/?#][^${STOP}]*)?`, "giu"), replaceLink);
   // Quoted absolute/explicit relative paths can contain spaces.
   text = text.replace(/(["'`])(?:[a-z]:[\\/]|\\\\|~[\\/]|\.{1,2}[\\/]|\/)[^\r\n]*?\1/gi, value => location(value.slice(0, -1)));
   // Paths: ASCII segments, or a final Chinese file name followed by a known extension.
@@ -88,7 +102,8 @@ export function stripPathsAndLinks(text: string): string {
       return real && !/^(?:and\/or|\d+(?:\/\d+)+)[.,;:!?]*$/i.test(value) ? location(value) : value;
     });
   // Standalone filenames (not everyday dotted words such as e.g. or version numbers).
-  const filename = (value: string) => replace(imageLike(value) ? IMAGE : FILE)("");
+  const filename = (value: string) => imageLike(value) ? replace(IMAGE)("")
+    : imagesOnly ? value : replace(FILE)("");
   text = text.replace(new RegExp(String.raw`(?<![\w.@-])[\w.@-]+\.(?:${FILE_EXT})(?::\d+(?::\d+)?)?(?![\w.])`, "giu"), filename);
   text = text.replace(new RegExp(String.raw`(?<=^|[\s\p{P}\uE000-\uE002])${hanName}`, "gimu"), filename);
   if (text === original) return text;

@@ -45,7 +45,7 @@ test("loads complete saved records newest first, including English-only lessons"
     assert.doesNotMatch(html, /Don&#39;t \+ base verb/, "older saved formulas are not displayed");
     assert.match(html, /纠正：保持动词原形。/);
     assert.match(html, /\nKeep src\/index.ts unchanged\./);
-    assert.doesNotMatch(html, /示例数据|评分|<script|EXTRA_SECRET/);
+    assert.doesNotMatch(html, /示例数据|评分|EXTRA_SECRET/, "two lessons fit one page, so the wheel script is not even present");
   });
 });
 
@@ -81,14 +81,22 @@ test("malformed, unsupported and invalid records are skipped visibly without mod
 
 test("all content is escaped, grammar marks only a literal match and HTML cannot run active content", () => {
   const attack = '</p><script>alert("x")</script><img src="https://evil.test" onerror="alert(1)">&';
-  const html = renderReview({ skipped: 0, lessons: [{
+  const single = renderReview({ skipped: 0, lessons: [{
     id: "a".repeat(64), savedAt: "2026-01-01T00:00:00Z", original: attack,
     english: `Before ${attack} after`,
     grammar: { excerpt: attack, pattern: attack, explanation: attack, correction: attack },
   }] });
-  assert.doesNotMatch(html, /<script|<img|<iframe|<link|<a /i);
-  assert.match(html, /&lt;script&gt;/);
-  assert.match(html, /<mark>&lt;\/p&gt;/);
+  assert.doesNotMatch(single, /<script/, "a single page has no script at all");
+  assert.doesNotMatch(single, /<img|<iframe|<link|<a /i, "user content never becomes active elements");
+  assert.match(single, /&lt;script&gt;/, "the attack string stays escaped in content");
+  assert.match(single, /<mark>&lt;\/p&gt;/);
+  const html = renderReview({ skipped: 0, lessons: Array.from({ length: 25 }, (_, index) => ({
+    id: String(index).padStart(64, "0"), savedAt: "2026-01-01T00:00:00Z",
+    original: `原文${index}`, english: `Lesson ${index}.`,
+  })) });
+  const scripts = html.match(/<script[\s\S]*?<\/script>/g) ?? [];
+  assert.equal(scripts.length, 1, "exactly one script exists");
+  assert.ok(!scripts[0]!.includes("alert"), "it contains no user-supplied text");
   assert.match(html, /default-src 'none'/);
   assert.match(html, /form-action 'none'/);
   assert.match(html, /<meta name="referrer" content="no-referrer">/);
@@ -100,26 +108,55 @@ test("all content is escaped, grammar marks only a literal match and HTML cannot
   assert.match(missingExcerpt, /Don&#39;t implement anything yet/);
 });
 
-test("over ten lessons split into pure-CSS pages with a pager; ten or fewer stay a single list", () => {
-  const lessons = Array.from({ length: 25 }, (_, index) => ({
+test("one page shows at a time and the wheel silently accumulates before flipping", () => {
+  const lessons = Array.from({ length: 30 }, (_, index) => ({
     id: String(index).padStart(64, "0"), savedAt: "2026-01-01T00:00:00Z",
     original: `原文${index}`, english: `Lesson ${index}.`,
   }));
   const html = renderReview({ skipped: 0, lessons });
-  assert.equal((html.match(/<section class="page" id="p\d+">/g) ?? []).length, 3);
-  assert.equal((html.match(/<article /g) ?? []).length, 25, "every lesson stays in the single offline file");
-  assert.match(html, /原文0</);
-  assert.match(html, /原文24</);
-  assert.equal((html.match(/class="(?:prev|next)"/g) ?? []).length, 4);
-  assert.match(html, /<span><\/span><span>第 1 \/ 3 页<\/span><a class="next" rel="next" href="#p2">/);
-  assert.match(html, /<a class="prev" rel="prev" href="#p1">/);
-  assert.match(html, /<a class="prev" rel="prev" href="#p2">/);
-  assert.match(html, /<span>第 3 \/ 3 页<\/span><span><\/span><\/nav>/, "the last page has no next link");
-  assert.match(html, /\.page:target\{display:block\}/);
-  assert.doesNotMatch(html, /<script/i);
+  assert.equal((html.match(/<article /g) ?? []).length, 30, "every lesson stays in the single offline file");
+  assert.match(html, /原文29</);
+  assert.match(html, /html,body\{overflow:hidden;height:100%\}/, "the document never scrolls");
+  assert.match(html, /<span class="state" id="p1"><\/span><span class="state" id="p2"><\/span>/, "each page has a hash marker");
+  assert.match(html, /\.page\{display:none/, "pages are hidden until their marker is targeted");
+  assert.match(html, /#p2:target~\.page:nth-of-type\(2\)\{display:grid\}/, "exactly one page turns on");
+  assert.match(html, /body:not\(:has\(\.state:target\)\) \.page:first-of-type\{display:grid\}/, "page 1 shows at load");
+  assert.match(html, /height:calc\(100vh - 58px\);overflow:auto/, "a tall page scrolls inside itself");
+  assert.match(html, /@keyframes page-in\{from\{opacity:0;transform:scale\(\.9\)\}/, "an arriving page scales up in");
+  assert.match(html, /@keyframes page-out\{from\{opacity:1;transform:none\}to\{opacity:0;transform:scale\(1\.07\)\}/, "a leaving page recedes with a visible zoom");
+  assert.match(html, /@keyframes page-out/, "a leaving page animates out before the flip");
+  assert.match(html, /animationend/, "the hash flips after the leave animation finishes");
+  assert.match(html, /\.page\.anim \.reading-list\{animation:page-in/, "only the card grid animates");
+  assert.doesNotMatch(html, /\.page\.anim\{animation|\.page\.anim-out\{animation/, "the page container (which holds the pager) no longer animates");
+  assert.doesNotMatch(html, /rail-in|pill-in|data-dir/, "no pager animations or direction tracking remain");
+  assert.equal((html.match(/<nav class="rail"/g) ?? []).length, 3, "every page carries its own rail");
+  assert.match(html, /<span class="step gap"[^>]*>↑<\/span><span class="pages"><span class="current" aria-current="page">1<\/span><a href="#p2"[^>]*>2<\/a><a href="#p3"[^>]*>3<\/a><\/span><a class="step" rel="next" href="#p2"/, "page 1: no prev, all three numbers, next exists");
+  assert.match(html, /<p class="page-mark" aria-hidden="true">2 \/ 3<\/p>/);
+  assert.match(html, /\.rail\{grid-area:rail;position:sticky/, "the rail rides along with its page");
+  assert.match(html, /\.reading-list\{column-width:340px/, "wide windows get several card columns");
+  assert.match(html, /@font-face\{font-family:Geist;src:url\(data:font\/woff2;base64,/, "Orca's bundled Geist is embedded for English");
+  assert.match(html, /font:14px\/1.7 "Geist",-apple-system,BlinkMacSystemFont,"PingFang SC"/, "Chinese falls back to PingFang SC like Orca");
+  assert.match(html, /font:21px\/1.55 "Geist",-apple-system,BlinkMacSystemFont,"Segoe UI"/, "English uses Orca's chat stack, not Georgia");
+  assert.doesNotMatch(html, /Georgia/, "the old serif font is gone");
+  assert.match(html, /font-src data:/, "CSP admits only the embedded font");
+  assert.match(html, /-webkit-line-clamp:2/, "a long original prompt cannot dominate a card");
+  assert.match(html, /min-height:236px/, "short cards keep a comparable height");
+  assert.match(html, /-webkit-line-clamp:6/, "a wall of translated text cannot dwarf its neighbours");
+  assert.match(html, /title="原文0"/, "the full text stays available on hover");
+  assert.doesNotMatch(html, /scroll-snap/, "no snap scrolling is left");
+  assert.match(html, /<script>/, "the wheel handler is the one allowed script");
+  assert.match(html, /const THRESHOLD = 400/, "about four wheel notches flip the page");
+  assert.match(html, /room > 1/, "a page taller than the window scrolls inside itself first");
+  assert.match(html, /script-src 'unsafe-inline'/, "CSP admits exactly the inline handler");
   const small = renderReview({ skipped: 0, lessons: lessons.slice(0, 10) });
-  assert.doesNotMatch(small, /class="page"|class="pager"|第 1 \/ 1/);
+  assert.doesNotMatch(small, /<nav class="rail"|<section class="page"|class="page-mark"|<script>/, "a single page has no pagination and no script");
   assert.equal((small.match(/<article /g) ?? []).length, 10);
+  const empty = renderReview({ skipped: 0, lessons: [] });
+  assert.match(empty, /还没有收藏/);
+  const many = renderReview({ skipped: 0, lessons: Array.from({ length: 250 }, (_, index) => lessons[index % 30]!) });
+  const page7 = many.split(`<section class="page" aria-label="第 7 页"`)[1]!.split("</section>")[0]!;
+  assert.equal((many.match(/<section class="page"/g) ?? []).length, 25);
+  assert.match(page7, /<a href="#p1"[^>]*>1<\/a><span class="ellipsis" aria-hidden="true">…<\/span><a href="#p5"[^>]*>5<\/a><a href="#p6"[^>]*>6<\/a><span class="current" aria-current="page">7<\/span><a href="#p8"[^>]*>8<\/a><a href="#p9"[^>]*>9<\/a><span class="ellipsis" aria-hidden="true">…<\/span><a href="#p25"[^>]*>25<\/a>/, "25 pages still show only first/last/neighbours");
 });
 
 test("missing storage has a helpful empty state; filesystem errors do not masquerade as an empty list", async () => {
@@ -183,6 +220,22 @@ test("browser launching uses separate arguments and no shell, including special 
   assert.deepEqual(browserCommand(url, "darwin"), ["open", [url]]);
   assert.deepEqual(browserCommand(url, "linux"), ["xdg-open", [url]]);
   assert.deepEqual(browserCommand(url, "win32"), ["rundll32.exe", ["url.dll,FileProtocolHandler", url]]);
+});
+
+test("old records show image locations as 「图片」 so no pasted path reaches the page", async () => {
+  await temporary(async directory => {
+    await saveLesson({ original: "/var/folders/2f/7ck/T/orca-paste-1794.png 看看这张图的报错",
+      english: "Look at the error in this screenshot." }, directory);
+    const [name] = await readdir(directory);
+    const path = join(directory, name!);
+    const before = await readFile(path, "utf8");
+    const data = await loadLessons(directory);
+    assert.equal(data.lessons[0]!.original, "「图片」 看看这张图的报错");
+    const html = renderReview(data);
+    assert.match(html, /「图片」 看看这张图的报错/);
+    assert.doesNotMatch(html, /orca-paste|var\/folders/, "the page stays free of local paths");
+    assert.equal(await readFile(path, "utf8"), before, "reading never rewrites a saved file");
+  });
 });
 
 test("saved word notes round-trip to the review page; old records without words keep their id", async () => {

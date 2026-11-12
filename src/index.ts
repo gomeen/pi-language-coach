@@ -1,3 +1,4 @@
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, CustomEditor } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type Environment, type ConfigResult } from "./config.ts";
 import { CoachController, type CoachState, type Generator } from "./controller.ts";
@@ -8,6 +9,29 @@ import { openReview, ReviewOpenError } from "./review.ts";
 
 const WIDGET = "language-coach";
 type Context = Pick<ExtensionContext, "mode" | "hasUI" | "ui">;
+
+/** `/coach` 的供选参数：每项带一句说明，选完即得到可直接回车的完整参数。
+ *  裸 `/coach` 和未知参数都是“清空面板”，所以不在列表里。 */
+const ARGUMENTS: readonly AutocompleteItem[] = [
+  { value: "on", label: "on", description: "开启后续输入的自动学习" },
+  { value: "off", label: "off", description: "取消请求并隐藏面板" },
+  { value: "retry", label: "retry", description: "重试上一条可处理的学习输入" },
+  { value: "clear", label: "clear", description: "清除当前讲解，保留开关状态" },
+  { value: "save", label: "save", description: "收藏当前英文与语法（同 F8）" },
+  { value: "practice", label: "practice", description: "打开输入一遍练习框" },
+  { value: "review", label: "review", description: "在浏览器打开收藏阅读列表" },
+  { value: "autosave on", label: "autosave on", description: "本次运行开启自动收藏" },
+  { value: "autosave off", label: "autosave off", description: "本次运行关闭自动收藏，F8 仍可手动收藏" },
+];
+
+/** Pi 传进来的是 `/coach ` 之后的整段文本，并按整段替换；两词的 `autosave on|off` 因此要作为一个值给出。
+ *  值本身已含全部词，一次前缀匹配就同时覆盖 `autosave`、`autosave ` 和 `autosave of`。 */
+function completeArgument(prefix: string): AutocompleteItem[] | null {
+  const query = prefix.trimStart().toLowerCase();
+  const items = ARGUMENTS.filter(entry => entry.value.startsWith(query));
+  return items.length > 0 ? items : null;
+}
+
 export interface Dependencies {
   environment?: () => Environment;
   generate?: Generator;
@@ -209,6 +233,7 @@ export function registerLanguageCoach(
   });
   pi.registerCommand("coach", {
     description: "独立英语学习：on | off | retry | clear | save | practice | review | autosave on|off",
+    getArgumentCompletions: completeArgument,
     handler: async (args, ctx) => {
       if (args.trim() === "review") {
         if (ctx.mode !== "tui" || !ctx.hasUI) return;

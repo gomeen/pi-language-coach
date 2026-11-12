@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripPathsAndLinks } from "../src/input.ts";
+import { stripImageReferences, stripPathsAndLinks } from "../src/input.ts";
 
 const examples = [
   ["请检查 /Users/me/private/app.ts，别用 --force。", "请检查 「文件」，别用 --force。"],
@@ -54,3 +54,31 @@ for (const [input, expected] of examples) {
     assert.equal(stripPathsAndLinks(output), output, "controller and transport filtering must be idempotent");
   });
 }
+
+// Saved originals and the 原文 row keep what the user typed, minus pasted image locations.
+const imageExamples = [
+  ["/var/folders/2f/7ck/T/orca-paste-1794.png 看看这张图里的报错", "「图片」 看看这张图里的报错"],
+  ["去掉/var/folders/2f/7ck/T/orca-paste-1794.png上面的标题", "去掉「图片」上面的标题"],
+  ["看 ![截图](/Users/me/shot.webp) 和 <img src=\"/Users/me/a.png\" alt=\"截图\">，先别改。", "看 「图片」 和 「图片」，先别改。"],
+  ["[Image #1] 这个报错怎么修", "「图片」 这个报错怎么修"],
+  ["C:\\Users\\me\\shot.png 和 ~/Pictures/截图.heic", "「图片」 和 「图片」"],
+  ["`/Users/me/shot.png` 和 '/Users/me/截图.jpg'", "「图片」 和 「图片」"],
+  ["I want to eat 西瓜", "I want to eat 西瓜"],
+] as const;
+
+for (const [input, expected] of imageExamples) {
+  test(`remove image locations only: ${input}`, () => {
+    const output = stripImageReferences(input);
+    assert.equal(output, expected);
+    assert.equal(stripImageReferences(output), output, "a stored original is cleaned once, never per render");
+  });
+}
+
+test("a saved original keeps typed file names, links and labels as written", () => {
+  const text = "先看 /Users/me/app.ts 和 https://example.com/private，再改截图.png 和 index.ts";
+  assert.equal(stripImageReferences(text), "先看 /Users/me/app.ts 和 https://example.com/private，「图片」 和 index.ts");
+  assert.equal(stripPathsAndLinks(text), "先看 「文件」 和 「链接」，「图片」 和 「文件」",
+    "the model still never sees a location");
+  const markdown = "看 <https://example.com/private> 和 [文档](https://example.com/a.pdf) 和 ![截图](/Users/me/shot.png)";
+  assert.equal(stripImageReferences(markdown), "看 <https://example.com/private> 和 [文档](https://example.com/a.pdf) 和 「图片」");
+});

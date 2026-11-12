@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, InputEvent } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
+import type { AutocompleteItem, Component } from "@earendil-works/pi-tui";
 import { registerLanguageCoach, type Dependencies } from "../src/index.ts";
 import type { CoachConfig, Environment } from "../src/config.ts";
 import type { Generation } from "../src/generate.ts";
@@ -12,6 +12,7 @@ import type { Lesson } from "../src/storage.ts";
 import { ReviewOpenError } from "../src/review.ts";
 
 type Host = Pick<ExtensionAPI, "on" | "registerCommand" | "registerShortcut">;
+type Completions = (prefix: string) => AutocompleteItem[] | null | Promise<AutocompleteItem[] | null>;
 type WidgetFactory = Exclude<Parameters<ExtensionContext["ui"]["setWidget"]>[1], undefined>;
 const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-lifecycle-"));
 type HarnessContext = Pick<ExtensionContext, "mode" | "hasUI"> & {
@@ -34,6 +35,7 @@ function harness(dependencies: Dependencies = {}, mode: ExtensionContext["mode"]
   const saved: Lesson[] = [];
   const notifications: string[] = [];
   let command: ((args: string, ctx: HarnessContext) => unknown) | undefined;
+  let completions: Completions | undefined;
   const components: Component[] = [];
   let current: Component | undefined;
   let widgetWrites = 0;
@@ -58,6 +60,7 @@ function harness(dependencies: Dependencies = {}, mode: ExtensionContext["mode"]
     registerCommand(name, options) {
       assert.equal(name, "coach");
       command = options.handler as unknown as typeof command;
+      completions = options.getArgumentCompletions;
     },
     registerShortcut(key, options) {
       shortcuts.set(key, options.handler as unknown as (ctx: HarnessContext) => unknown);
@@ -84,6 +87,10 @@ function harness(dependencies: Dependencies = {}, mode: ExtensionContext["mode"]
       return result;
     },
     async command(args: string) { await command?.(args, context); },
+    /** Argument options Pi would show for `/coach <prefix>`; empty when it offers nothing. */
+    async suggest(prefix: string) {
+      return (await completions?.(prefix)) ?? [];
+    },
     lines(width = 200) { return current?.render(width) ?? []; },
     get writes() { return widgetWrites; },
     get mounted() { return current !== undefined; },
@@ -121,6 +128,26 @@ test("registration is isolated; TUI interactive input passes immediately while c
   assert.equal(h.lines()[0], "原文：I has a bug. Keep src/index.ts and do not use --force.", "the typed input leads for comparison");
   assert.equal(h.lines()[1], "I have a bug.");
   assert.equal(h.lines().length, 3);
+});
+
+test("coach argument completions list every supported subcommand and narrow by prefix", async () => {
+  const h = harness();
+  const values = async (prefix: string) => (await h.suggest(prefix)).map(item => item.value);
+  assert.deepEqual(await values(""), ["on", "off", "retry", "clear", "save", "practice", "review", "autosave on", "autosave off"],
+    "an empty argument lists the quick options instead of nothing");
+  assert.deepEqual(await values("re"), ["retry", "review"]);
+  assert.deepEqual(await values("  re"), ["retry", "review"], "stray leading spaces are tolerated");
+  assert.deepEqual(await values("ON"), ["on"], "prefix matching ignores case");
+  assert.deepEqual(await values("retry "), [], "no subcommand takes free-form text");
+  assert.deepEqual(await values("nope"), []);
+  assert.deepEqual(await values("autosave"), ["autosave on", "autosave off"], "the two-word form completes as one value");
+  assert.deepEqual(await values("autosave "), ["autosave on", "autosave off"]);
+  assert.deepEqual(await values("autosave of"), ["autosave off"]);
+  assert.deepEqual(await values("Autosave of"), ["autosave off"]);
+  assert.deepEqual(await values("autosave later"), []);
+  const offered = await h.suggest("");
+  assert.deepEqual(offered.map(item => item.label), offered.map(item => item.value), "the label is the value Pi inserts");
+  assert.ok(offered.every(item => item.description), "every option explains itself");
 });
 
 test("attached images never enter coaching; accompanying text still translates unchanged for the host", async () => {
@@ -220,12 +247,27 @@ test("location filtering affects coaching and retry only, not main input or save
   assert.equal(work.calls[1]!.prompt, "「文件」 请检查 「链接」，先别改。");
   work.calls[1]!.resolve(ready("Check it, but don't change it yet.")); await tick();
   await h.save();
-  assert.equal(h.saved[0]!.original, original);
+  assert.equal(h.saved[0]!.original, original, "a typed file name and link stay in the saved original");
   h.input("https://internal.example.com/secret"); await tick();
   h.input("`/Users/me/private.ts`"); await tick();
   h.input("[src/a.ts](https://example.com/a)"); await tick();
   assert.equal(work.calls.length, 2, "location-only input is skipped");
   assert.equal(h.mounted, false);
+});
+
+test("a pasted image path never reaches the panel 原文 or the saved original", async () => {
+  const work = deferredGenerator();
+  const h = harness({ generate: work.generate });
+  const image = "/var/folders/2f/7ck/T/orca-paste-1794.png";
+  h.input(`${image} 看看截图里的报错，再改 /Users/me/app.ts`); await tick();
+  assert.equal(work.calls[0]!.prompt, "「图片」 看看截图里的报错，再改 「文件」");
+  work.calls[0]!.resolve(ready("Look at the error in the screenshot, then change the file.")); await tick();
+  const panel = h.lines().join("\n");
+  assert.match(panel, /原文：「图片」 看看截图里的报错/);
+  assert.doesNotMatch(panel, /orca-paste/, "the clipboard path is not worth reading");
+  await h.save();
+  assert.equal(h.saved[0]!.original, "「图片」 看看截图里的报错，再改 /Users/me/app.ts",
+    "only the image location is replaced, keeping what the user typed");
 });
 
 test("headless/RPC/extension sources never read environment or request coaching", async () => {
