@@ -479,9 +479,9 @@ test("the prompt stays concise and delegates word and grammar choices", () => {
     /根据上下文修正同音错别字/, /「图片」「文件」「链接」.*直接忽略/,
     /根据英语表达习惯调整语序/, /保留所有细节、数字、代码和标识符/,
     /仅返回 JSON/, /words 列最值得讲解的单词或短语，跳过基础词/, /word 用 english 里的原样拼写/,
-    /输入里用中文写的词优先给出对应英文说法/,
+    /中英混合说明其中用中文写的词不会说/, /输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点/,
     /grammar 讲最值得讲解的一个语法点/, /excerpt 从 english（而非输入）原样复制/,
     /不用「动词 \+ 名词」这类公式/, /输入里的英语有错误时优先讲该错误，并填写 correction/,
-    /只写最主要的一处改动涉及的几个词，不写整句/, /没有错误就省略 correction/,
+    /只写最主要的一处改动涉及的几个词，不写整句/, /中文片段较长时优先讲这个片段的完整说法/, /没有错误就省略 correction/,
   ]) assert.match(SYSTEM_PROMPT, requirement);
 });
