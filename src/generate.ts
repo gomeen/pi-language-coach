@@ -1,7 +1,15 @@
 import type { ApiProtocol, CoachConfig } from "./config.ts";
 import { hasProse, stripPathsAndLinks } from "./input.ts";
 
-export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。仅返回 JSON：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。words 逐个解释 english 里值得学的单词和短语：有难度的都要讲，跳过 it、this、code 这类基础词，按在句中的先后顺序，最多 8 个；word 用 english 里的原样拼写；输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点。grammar 讲这类话英语怎么说：用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思，用 english 里的真实单词举例；不要只写「用于询问……」这类意思，也不用动名词、从句、不定式这类说法，直接写成「后面接 explaining grammar 这样的 -ing 形式」这种看得懂的话；excerpt 从 english（而非输入）原样复制；pattern 写这个句式的简短中文名；explanation 用简洁中文；输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
+export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。
+
+仅返回 JSON，不要任何前言、说明或代码块：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。
+
+words 逐个解释 english 里值得学的单词和短语：有难度的都要讲，跳过 it、this、code 这类基础词，按在句中的先后顺序，最多 8 个；word 用 english 里的原样拼写；输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点，不超过 20 字。
+
+grammar 讲这类话英语怎么说：用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思，用 english 里的真实单词举例；不要只写「用于询问……」这类意思，也不用动名词、分词、从句、不定式、谓语、表语、情态动词这类说法，直接写成「后面接 explaining grammar 这样的 -ing 形式」这种看得懂的话；不要写成「动词 + 名词」「be not + 形容词」这类带加号的公式，改成「后面接 clickable 这样的形容词」这种说法；excerpt 从 english（而非输入）原样复制；pattern 写这个句式的简短中文名；explanation 用简洁中文，不超过 100 字。
+
+输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
 
 export interface Grammar {
   excerpt: string;
@@ -259,12 +267,17 @@ function parsePayload(raw: string, original: string): Generation {
   const found = parseWords(result.words, english);
   const words = found.length ? { words: found } : {};
   const grammar = result.grammar;
+  // An empty correction is the model saying "nothing to fix", which the prompt asks it to express by
+  // omitting the field; treat the two the same instead of discarding a valid grammar point.
+  const rawCorrection = object(grammar) ? grammar.correction : undefined;
+  const proposed = typeof rawCorrection === "string" && rawCorrection.trim() ? rawCorrection.trim() : undefined;
   if (!object(grammar) || !nonempty(grammar.excerpt) || !lower.includes(grammar.excerpt.toLowerCase()) ||
       !nonempty(grammar.pattern) || !nonempty(grammar.explanation) ||
       !/\p{Script=Han}/u.test(grammar.explanation) ||
       Array.from(grammar.excerpt).length > 300 || Array.from(grammar.pattern).length > 200 ||
       Array.from(grammar.explanation).length > 500 ||
-      (grammar.correction !== undefined && (!nonempty(grammar.correction) || Array.from(grammar.correction).length > 300))) {
+      (rawCorrection !== undefined && typeof rawCorrection !== "string") ||
+      (proposed !== undefined && Array.from(proposed).length > 300)) {
     return { kind: "partial", english, ...words };
   }
   // Showing no rule beats teaching a false one or the formula style the user found unreadable.
@@ -277,7 +290,7 @@ function parsePayload(raw: string, original: string): Generation {
   // An optional correction must compare an English span actually in the submitted input with one in the result.
   // Translating Chinese is never a correction; drop unverifiable suggestions rather than teaching an invented edit.
   // Several edits may be listed as "a → b; c → d"; each pair is checked on its own and the rest are kept.
-  const parts = typeof grammar.correction === "string" ? grammar.correction.split(/[;；]/) : [];
+  const parts = proposed ? proposed.split(/[;；]/) : [];
   const verified = parts.flatMap((part) => {
     const change = /^\s*(.+?)\s*→\s*(.+?)\s*$/u.exec(part);
     if (!change) return [];

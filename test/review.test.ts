@@ -41,9 +41,10 @@ test("loads complete saved records newest first, including English-only lessons"
     assert.equal((html.match(/<article /g) ?? []).length, 2);
     assert.equal((html.match(/<div class="grammar">/g) ?? []).length, 1);
     assert.match(html, /<mark>Don&#39;t implement<\/mark>/);
-    assert.match(html, /<span class="grammar-label">语法<\/span>否定祈使句。/);
+    assert.match(html, /<span class="grammar-label">语法<\/span><ol><li class="explanation">否定祈使句。<\/li>/);
     assert.doesNotMatch(html, /Don&#39;t \+ base verb/, "older saved formulas are not displayed");
-    assert.match(html, /纠正：保持动词原形。/);
+    assert.match(html, /<li class="correction">纠正：保持动词原形。<\/li><\/ol>/);
+    assert.match(html, /<p class="field">英文<\/p>/);
     assert.match(html, /\nKeep src\/index.ts unchanged\./);
     assert.doesNotMatch(html, /示例数据|评分|EXTRA_SECRET/, "two lessons fit one page, so the wheel script is not even present");
   });
@@ -252,7 +253,7 @@ test("saved word notes round-trip to the review page; old records without words 
     const withWords = data.lessons.find(item => item.words)!;
     assert.deepEqual(withWords.words, [{ word: "<hard-coded>", meaning: "写死的 & 固定" }]);
     const html = renderReview(data);
-    assert.match(html, /<span class="grammar-label">词语<\/span><span lang="en">&lt;hard-coded&gt;<\/span> 写死的 &amp; 固定/);
+    assert.match(html, /<span class="grammar-label">词语<\/span><ol><li><span lang="en">&lt;hard-coded&gt;<\/span> 写死的 &amp; 固定<\/li><\/ol>/);
     const [name] = (await readdir(directory)).filter(file => file !== before);
     const record = JSON.parse(await readFile(join(directory, name!), "utf8"));
     await writeFile(join(directory, name!), JSON.stringify({ ...record, words: [{ word: 1 }] }));

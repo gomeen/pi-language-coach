@@ -36,12 +36,12 @@ test("opaque grammar formulas stay hidden while practical explanation remains vi
   } };
   const lines = new CoachWidget(() => state).render(80);
   assert.equal(lines.length, 2);
-  assert.equal(lines[0], excerpt, "English is shown directly, without a label");
-  assert.match(lines[1]!, /^语法：要说不要修改代码，可以用 Do not modify。/);
+  assert.equal(lines[0], `英文：${excerpt}`, "English carries its own label");
+  assert.match(lines[1]!, /^语法：1\. 要说不要修改代码，可以用 Do not modify。/);
   assert.doesNotMatch(lines[1]!, /don't \+ adverb \+ base verb/);
   const feedback = new CoachWidget(() => state, (_row, text) => text, "已收藏").render(80);
   assert.equal(feedback.length, 2, "save notice shares the notes row, no extra row");
-  assert.match(feedback[1]!, /^已收藏 · 语法/);
+  assert.match(feedback[1]!, /^已收藏 · 语法：1\./);
   assert.ok(feedback.every(line => visibleWidth(line) <= 80));
   assert.equal(new CoachWidget(() => ({ kind: "loading" }),
     (_row, text) => text, "已收藏").render(80).length, 0);
@@ -59,26 +59,26 @@ test("the submitted prompt is shown above the translation, never displacing the 
   new CoachWidget(() => withWords, row => { kinds2.push(row); return ""; }, undefined, "I has a bug.").render(200);
   assert.deepEqual(kinds2, ["input", "english", "words", "notes"], "words sit between the English and the grammar");
   const visible = new CoachWidget(() => state, (row, text) => text, undefined, "I has a bug.").render(200);
-  assert.deepEqual(visible, ["原文：I has a bug.", "I have a bug.", "语法：have 表状态。"]);
+  assert.deepEqual(visible, ["原文：I has a bug.", "英文：I have a bug.", "语法：1. have 表状态。"]);
   const partial = new CoachWidget(() => ({ kind: "partial", english: "Second." }),
     (_row, text) => text, undefined, "second").render(200);
-  assert.deepEqual(partial, ["原文：second", "Second."], "no invented note when grammar is unavailable");
+  assert.deepEqual(partial, ["原文：second", "英文：Second."], "no invented note when grammar is unavailable");
   // Multiline and hostile input collapses into one sanitized line.
   assert.equal(new CoachWidget(() => state, (_row, text) => text, undefined, "a\nb").render(200)[0], "原文：a b");
   // No or blank prompt keeps the two-row layout for older callers.
-  assert.deepEqual(new CoachWidget(() => state).render(200), ["I have a bug.", "语法：have 表状态。"]);
+  assert.deepEqual(new CoachWidget(() => state).render(200), ["英文：I have a bug.", "语法：1. have 表状态。"]);
   // SHOW_ORIGINAL=false hides the submitted line even when the prompt is known.
   const hidden = new CoachWidget(() => state, (_row, text) => text, undefined, "I has a bug.", false).render(200);
-  assert.deepEqual(hidden, ["I have a bug.", "语法：have 表状态。"]);
+  assert.deepEqual(hidden, ["英文：I have a bug.", "语法：1. have 表状态。"]);
   assert.equal(new CoachWidget(() => state, (_row, text) => text, undefined, " \n ").render(200).length, 2);
-  // The save notice still prepends to the notes row only.
+  // The save notice still prepends to the first notes row only.
   const notice = new CoachWidget(() => state, (_row, text) => text, "已收藏", "I has a bug.").render(200);
-  assert.deepEqual(notice, ["原文：I has a bug.", "I have a bug.", "已收藏 · 语法：have 表状态。"]);
+  assert.deepEqual(notice, ["原文：I has a bug.", "英文：I have a bug.", "已收藏 · 语法：1. have 表状态。"]);
   // Long prompts wrap fully like every other row.
   const long = new CoachWidget(() => state, (_row, text) => text, undefined, "长输入 ".repeat(30) + "END").render(20);
   assert.ok(long.length > 3, "the prompt wraps onto more rows");
   assert.ok(long.every(line => visibleWidth(line) <= 20));
-  assert.match(stripTerminalSequences(long.join(" ")).replace(/\s+/g, " "), /END I have a bug/, "the whole prompt is visible, in order, before the translation");
+  assert.match(stripTerminalSequences(long.join(" ")).replace(/\s+/g, " "), /END 英文：I have a bug/, "the whole prompt is visible, in order, before the translation");
 });
 
 test("the wrong word in the original and the fixed word in the English are underlined", () => {
@@ -88,9 +88,10 @@ test("the wrong word in the original and the fixed word in the English are under
   const widget = new CoachWidget(() => state, (_row, text) => text, undefined, "He don't know how to fix this bug.");
   const plain = plainTerminal(() => widget.render(200));
   assert.equal(plain[0], "原文：\x1b[4mHe don't\x1b[24m know how to fix this bug.");
-  assert.equal(plain[1], "\x1b[4mHe doesn't\x1b[24m know how to fix this bug.");
-  // The notes row keeps the plain textual correction; only the two English rows are marked.
-  assert.match(plain[2]!, /^语法：主语 He 是第三人称单数，所以用 doesn't。；纠正：He don't → He doesn't$/);
+  assert.equal(plain[1], "英文：\x1b[4mHe doesn't\x1b[24m know how to fix this bug.");
+  // The correction is its own numbered row; only the two English rows are marked.
+  assert.equal(plain[2], "语法：1. 主语 He 是第三人称单数，所以用 doesn't。");
+  assert.equal(plain[3], "2. 纠正：He don't → He doesn't");
   assert.ok(widget.render(200).every(line => visibleWidth(line) <= 200));
 });
 
@@ -115,7 +116,7 @@ test("marks follow the correction pairs and stay out of rows without them", () =
   const plain: CoachState = { kind: "ready", english: "I have a question.", grammar: {
     excerpt: "I have", pattern: "主语是 I", explanation: "主语是 I 时用 have。" } };
   assert.deepEqual(new CoachWidget(() => plain, (_r, t) => t, undefined, "I has a question.").render(200),
-    ["原文：I has a question.", "I have a question.", "语法：主语是 I 时用 have。"]);
+    ["原文：I has a question.", "英文：I have a question.", "语法：1. 主语是 I 时用 have。"]);
   const partial: CoachState = { kind: "partial", english: "Hello." };
   assert.equal(markSpans("Hello.", []), "Hello.", "no phrases means no marks");
   // A word inside another word is not a hit; the first hit is marked, later ones are left alone.
@@ -149,7 +150,7 @@ test("hidden widget renders zero lines and no borders/padding", () => {
     assert.deepEqual(new CoachWidget(() => state).render(80), []);
   }
   const widget = new CoachWidget(() => ({ kind: "partial", english: "hello" }));
-  assert.equal(widget.render(80)[0], "hello");
+  assert.equal(widget.render(80)[0], "英文：hello");
 });
 
 test("strip hostile ANSI/OSC/APC/control/bidi and Unicode line separators before theming", () => {
@@ -172,15 +173,16 @@ test("words and grammar get a row each, and a missing part simply has no row", (
   const ready: CoachState = { kind: "ready", english: "Nothing is hard-coded.", words, grammar: {
     excerpt: "Nothing is", pattern: "nothing 自带否定", explanation: "nothing 后面不再加 not。" } };
   assert.deepEqual(new CoachWidget(() => ready).render(200), [
-    "Nothing is hard-coded.",
-    "词：hard-coded 写死的 · sign-off 验收确认",
-    "语法：nothing 后面不再加 not。",
+    "英文：Nothing is hard-coded.",
+    "词：1. hard-coded 写死的",
+    "2. sign-off 验收确认",
+    "语法：1. nothing 后面不再加 not。",
   ]);
   // Invalid grammar keeps the words and drops only the grammar row; nothing is invented in its place.
   const partial: CoachState = { kind: "partial", english: "Nothing is hard-coded.", words };
   assert.deepEqual(new CoachWidget(() => partial).render(200),
-    ["Nothing is hard-coded.", "词：hard-coded 写死的 · sign-off 验收确认"]);
-  assert.deepEqual(new CoachWidget(() => ({ kind: "partial", english: "Second." })).render(200), ["Second."]);
+    ["英文：Nothing is hard-coded.", "词：1. hard-coded 写死的", "2. sign-off 验收确认"]);
+  assert.deepEqual(new CoachWidget(() => ({ kind: "partial", english: "Second." })).render(200), ["英文：Second."]);
   // Grammar without words is two rows, words without grammar is two rows.
   const noWords: CoachState = { kind: "ready", english: "Keep it.", grammar: { excerpt: "Keep", pattern: "p", explanation: "短。" } };
   assert.equal(new CoachWidget(() => noWords).render(200).length, 2);
@@ -201,7 +203,7 @@ test("long English and notes wrap completely without splitting CJK or emoji, sho
   const note_rows = plain.filter(line => line.startsWith("N")).map(line => line.slice(1));
   assert.ok(english_rows.length > 3 && note_rows.length > 3);
   assert.deepEqual(plain.map(line => line[0]), [...english_rows.map(() => "E"), ...note_rows.map(() => "N")], "English rows come first");
-  assert.equal(english_rows.join(" ").replace(/\s+/g, " ").trim(), safeText(english), "every word is shown once, in order");
+  assert.equal(english_rows.join(" ").replace(/\s+/g, " ").trim(), `英文：${safeText(english)}`, "every word is shown once, in order");
   assert.match(note_rows.join(""), /结束$/);
   assert.ok(lines.every(line => /^\x1b\[31m/.test(line)), "each row is colored separately");
   color = "32";
@@ -211,6 +213,7 @@ test("long English and notes wrap completely without splitting CJK or emoji, sho
   for (const width of [1, 2, 3]) {
     const narrow = new CoachWidget(() => ({ kind: "partial", english: "ABCDE" })).render(width);
     assert.ok(narrow.every(line => visibleWidth(line) <= width));
-    assert.equal(narrow.filter(line => /[A-E]/.test(line)).join(""), "ABCDE", `width=${width}`);
+    // The label shares the narrow rows, so check the English arrives whole and in order.
+    assert.equal(narrow.join("").replace(/\s/g, "").slice(-5), "ABCDE", `width=${width}`);
   }
 });

@@ -126,7 +126,7 @@ test("registration is isolated; TUI interactive input passes immediately while c
   work.calls[0]!.resolve(ready("I have a bug."));
   await tick();
   assert.equal(h.lines()[0], "原文：I has a bug. Keep src/index.ts and do not use --force.", "the typed input leads for comparison");
-  assert.equal(h.lines()[1], "I have a bug.");
+  assert.equal(h.lines()[1], "英文：I have a bug.");
   assert.equal(h.lines().length, 3);
 });
 
@@ -201,7 +201,7 @@ test("latest request wins even when transport ignores abort; skipped input cance
   assert.equal(work.calls[0]!.signal.aborted, true);
   work.calls[1]!.resolve(ready("Second.")); await tick();
   work.calls[0]!.resolve(ready("STALE FIRST SECRET")); await tick();
-  assert.deepEqual(h.lines(), ["原文：second", "Second.", "语法：保留原意的短句。"]);
+  assert.deepEqual(h.lines(), ["原文：second", "英文：Second.", "语法：1. 保留原意的短句。"]);
   h.input("third"); await tick();
   h.input("/skill:skip");
   assert.equal(work.calls[2]!.signal.aborted, true);
@@ -323,7 +323,7 @@ test("retry resends only last eligible submission, not draft/skipped/main prompt
   assert.equal(work.calls[1]!.prompt, "eligible");
   work.calls[1]!.resolve(ready("Retried.")); await tick();
   assert.equal(h.lines()[0], "原文：eligible");
-  assert.equal(h.lines()[1], "Retried.");
+  assert.equal(h.lines()[1], "英文：Retried.");
   await h.command("clear");
   assert.deepEqual(h.lines(), []);
   await h.command("retry"); await tick();
@@ -551,7 +551,7 @@ test("turning autosave off while a request is pending prevents its later save; m
   work.calls[0]!.resolve(ready("Pending complete.")); await tick();
   assert.equal(h.saved.length, 0);
   assert.equal(h.lines()[0], "原文：pending");
-  assert.equal(h.lines()[1], "Pending complete.");
+  assert.equal(h.lines()[1], "英文：Pending complete.");
   await h.save();
   assert.equal(h.saved.length, 1);
   h.emit({ type: "session_shutdown" });
@@ -584,7 +584,7 @@ test("long results wrap in the widget, keep the draft and show the next result f
   assert.match(lines.join(" "), /END/, "the whole English is visible without paging");
   english = "Next.";
   h.input("新的一条"); await tick();
-  assert.equal(h.lines(30)[1], "Next.");
+  assert.equal(h.lines(30)[1], "英文：Next.");
   assert.equal(h.lines(30)[0], "原文：新的一条");
   assert.equal(h.saved.length, 0, "rendering does not save");
   h.emit({ type: "session_shutdown" });

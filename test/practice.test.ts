@@ -156,7 +156,7 @@ test("the typing row appears by default with every fresh result, next to english
   assert.ok(field, "the row opens on its own when the result lands");
   const panel = h.lines.join("\n");
   assert.match(panel, /Outline the goals first\./);
-  assert.match(panel, /语法：祈使句用动词原形开头。/);
+  assert.match(panel, /语法：1\. 祈使句用动词原形开头。/);
   assert.match(field.render(160).join("\n"), /输入一遍/);
 });
 
@@ -233,7 +233,7 @@ test("SHOW_ORIGINAL=false hides the submitted line but keeps english and grammar
   const panel = h.lines.join("\n");
   assert.doesNotMatch(panel, /原文：/);
   assert.match(panel, /Outline the goals first\./);
-  assert.match(panel, /语法：祈使句用动词原形开头。/);
+  assert.match(panel, /语法：1\. 祈使句用动词原形开头。/);
 });
 
 test("practice retains the native main draft, paste storage and cursor without a text round-trip", () => {

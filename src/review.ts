@@ -141,14 +141,17 @@ function rail(page: number, total: number): string {
 export function renderReview(data: ReviewData): string {
   const renderLesson = (lesson: SavedLesson): string => {
     const grammar = lesson.grammar;
+    // One numbered item per word: a «·»-joined paragraph made eight entries read as one clump.
     const vocabulary = lesson.words?.length ? `
-<p class="words"><span class="grammar-label">词语</span>${lesson.words
-      .map(({ word, meaning }) => `<span lang="en">${escape(word)}</span> ${escape(meaning)}`).join("　·　")}</p>` : "";
+<div class="words"><span class="grammar-label">词语</span><ol>${lesson.words
+      .map(({ word, meaning }) => `<li><span lang="en">${escape(word)}</span> ${escape(meaning)}</li>`).join("")}</ol></div>` : "";
+    // The translation carries its own label, like 词语 and 语法 do; the English stays the headline.
     return `<article class="lesson">
 <p class="source" title="${escape(lesson.original)}">${escape(lesson.original)}</p>
+<p class="field">英文</p>
 <p class="english" lang="en" title="${escape(lesson.english)}">${renderEnglish(lesson)}</p>${vocabulary}${grammar ? `
-<div class="grammar"><p class="explanation"><span class="grammar-label">语法</span>${escape(grammar.explanation)}</p>${grammar.correction ? `
-<p class="correction">纠正：${escape(grammar.correction)}</p>` : ""}</div>` : ""}
+<div class="grammar"><span class="grammar-label">语法</span><ol><li class="explanation">${escape(grammar.explanation)}</li>${grammar.correction ? `
+<li class="correction">纠正：${escape(grammar.correction)}</li>` : ""}</ol></div>` : ""}
 </article>`;
   };
   const pages = Math.ceil(data.lessons.length / PAGE_SIZE);
@@ -216,11 +219,14 @@ ${pages > 1 ? pageRules : ""}
    Six lines plus the hover title keep the card height in the same league as the rest; print expands. */
 .english{margin:0;font:21px/1.55 "Geist",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;letter-spacing:-.2px;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}
 mark{color:inherit;background:none;text-decoration:underline;text-decoration-color:#9aa986;text-decoration-thickness:2px;text-underline-offset:5px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
-.grammar{margin-top:15px;border-top:1px solid #e8e9df;padding-top:11px;color:var(--muted);font-size:13px}
-.grammar-label{margin-right:11px;font:11px "Geist",-apple-system,BlinkMacSystemFont,sans-serif;color:var(--muted)}
-.words{margin:11px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
-.explanation,.correction{margin:5px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
-.explanation{margin-top:0}
+.grammar{margin-top:15px;border-top:1px solid #e8e9df;padding-top:11px;color:var(--muted);font-size:13px;display:flex;gap:11px}
+.grammar-label{flex:0 0 auto;padding-top:3px;font:11px "Geist",-apple-system,BlinkMacSystemFont,sans-serif;color:var(--muted)}
+/* Numbered rows: each word and each grammar item keeps a line of its own. */
+.words{margin:11px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere;display:flex;gap:11px}
+.words ol,.grammar ol{margin:0;padding-left:1.5em;min-width:0}
+.words li,.grammar li{margin:0 0 2px}
+.field{margin:0 0 3px;font:11px "Geist",-apple-system,BlinkMacSystemFont,sans-serif;color:var(--muted)}
+.explanation,.correction{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .notice{color:var(--muted)}
 ::selection{background:#dce5cd;color:#24321e}
 @media(max-width:900px){

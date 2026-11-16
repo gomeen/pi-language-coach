@@ -355,6 +355,17 @@ test("bad grammar keeps entire valid English with partial state; exact excerpt r
   }
 });
 
+test("a blank correction field is read as \"nothing to fix\", not as broken grammar", async () => {
+  const english = "Please don't change the API yet; just outline a plan first.";
+  const grammar = { excerpt: "outline a plan", pattern: "先给方案",
+    explanation: "outline a plan 是说先给出方案要点，don't 后面接动词原形。" };
+  for (const correction of ["", "   "]) {
+    const result = await generate(config(), english, signal(),
+      async () => response(provider({ english, grammar: { ...grammar, correction } })));
+    assert.deepEqual(result, { kind: "ready", english, grammar }, `correction=${JSON.stringify(correction)}`);
+  }
+});
+
 test("a correction is retained only when its before/after phrases appear in input and final English", async () => {
   const original = "He don't know how to fix this bug.";
   const english = "He doesn't know how to fix this bug.";
@@ -535,4 +546,25 @@ test("the prompt stays concise and delegates word and grammar choices", () => {
     /输入里的英语有错误时优先讲该错误，并填写 correction/,
     /只写最主要的一处改动涉及的几个词，不写整句/, /没有错误就省略 correction/,
   ]) assert.match(SYSTEM_PROMPT, requirement);
+});
+
+test("the prompt is one labelled block per job instead of a 40-clause paragraph", () => {
+  const blocks = SYSTEM_PROMPT.split("\n\n");
+  assert.equal(blocks.length, 5, "input/translation, output shape, words, grammar, correction");
+  assert.ok(blocks.every(block => block.trim().length > 0));
+  assert.match(blocks[1]!, /^仅返回 JSON，不要任何前言、说明或代码块/);
+  assert.match(blocks[2]!, /^words 逐个解释/);
+  assert.match(blocks[3]!, /^grammar 讲这类话英语怎么说/);
+  assert.match(blocks[4]!, /^输入里的英语有错误时优先讲该错误/);
+});
+
+test("the prompt names every length cap and banned term the parser silently enforces", () => {
+  // A cap the model is not told about throws the whole grammar point away as invalid (partial).
+  assert.match(SYSTEM_PROMPT, /meaning .*不超过 20 字/);
+  assert.match(SYSTEM_PROMPT, /explanation .*不超过 100 字/);
+  // The «+» formula shape is rejected too, so the ban has to name it, not only the terms.
+  assert.match(SYSTEM_PROMPT, /不要写成「动词 \+ 名词」/);
+  for (const term of ["动名词", "分词", "从句", "不定式", "谓语", "表语", "情态动词"]) {
+    assert.ok(SYSTEM_PROMPT.includes(term), `${term} is rejected by the parser, so the prompt must ban it too`);
+  }
 });
