@@ -1,6 +1,6 @@
 {
   "name": "pi-language-coach",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "license": "MIT",
   "description": "Independent prompt, English and grammar coaching panel for Pi.",
   "type": "module",
@@ -24,7 +24,8 @@
   "scripts": {
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "demo:review": "python3 -m http.server 8767 --bind 127.0.0.1 --directory prototypes"
+    "demo:review": "python3 -m http.server 8767 --bind 127.0.0.1 --directory prototypes",
+    "try": "tsx scripts/try.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

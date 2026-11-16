@@ -195,14 +195,33 @@ test("normal casing is displayed as the provider returned it; matching ignores c
 
 test("corrections keep the original spelling of both sides and drop casing-only changes", async () => {
   const grammar = { excerpt: "He doesn't", pattern: "doesn't 后不变", explanation: "he 后用 doesn't，后面的 know 不加 s。" };
-  for (const [original, proposed, expected] of [
-    ["He Don't Know.", "don't → doesn't", "Don't → doesn't"],
-    ["He don't know.", "he don't → he doesn't", "He don't → He doesn't"],
-    ["he doesn't know.", "he → He", undefined],
-    ["He don't know.", "They don't → he doesn't", undefined],
+  for (const [original, english, proposed, expected] of [
+    ["He Don't Know.", "He doesn't know.", "don't → doesn't", "Don't → doesn't"],
+    ["He don't know.", "He doesn't know.", "he don't → he doesn't", "He don't → He doesn't"],
+    ["he doesn't know.", "He doesn't know.", "he → He", undefined],
+    ["He don't know.", "He doesn't know.", "They don't → he doesn't", undefined],
   ] as const) {
     const result = await generate(config(), original, signal(), async () => response(provider({
-      english: "He doesn't know.", grammar: { ...grammar, correction: proposed },
+      english, grammar: { ...grammar, correction: proposed },
+    })));
+    assert.equal(result.kind, "ready");
+    if (result.kind === "ready") assert.equal(result.grammar.correction, expected);
+  }
+});
+
+test("several edits in one correction are each verified instead of dropping the whole line", async () => {
+  const original = "Yesterday I go to the meeting and discuss it";
+  const english = "Yesterday I went to the meeting and discussed it.";
+  const grammar = { excerpt: "went to the meeting", pattern: "过去的事", explanation: "Yesterday 说明是过去，动作要用过去式。" };
+  for (const [proposed, expected] of [
+    ["go → went; discuss → discussed", "go → went；discuss → discussed"],
+    ["go to → went to；discuss → discussed", "go to → went to；discuss → discussed"],
+    ["go → went; run → ran", "go → went"],
+    ["go → went; 昨天 → yesterday", "go → went"],
+    ["过去 → past", undefined],
+  ] as const) {
+    const result = await generate(config(), original, signal(), async () => response(provider({
+      english, grammar: { ...grammar, correction: proposed },
     })));
     assert.equal(result.kind, "ready");
     if (result.kind === "ready") assert.equal(result.grammar.correction, expected);
@@ -291,6 +310,24 @@ test("redirects cannot forward the key to another host", async () => {
       await new Promise<void>(resolve => http.close(() => resolve()));
     }
   }
+});
+
+test("a narrated preamble before the JSON object is recovered instead of failing the whole reply", async () => {
+  // Verbatim assistant text in a normal envelope, not a JSON-encoded string.
+  const raw = (text: string) => JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text }] });
+  const answer = JSON.stringify(valid);
+  // Real output: the model described its next steps, then emitted the answer object.
+  const narrated = "I'll inspect the working tree and the diff first, then trace any affected code paths. " + answer;
+  assert.deepEqual(await generate(config(), "hello", signal(), async () => response(raw(narrated))), {
+    kind: "ready", english: valid.english, grammar: valid.grammar });
+  // Braces and quotes in the narration must not defeat the recovery.
+  const braced = 'Looking at {this} "first".\n' + answer;
+  assert.equal((await generate(config(), "hello", signal(), async () => response(raw(braced)))).kind, "ready");
+  // Trailing chatter after the object is fine too.
+  assert.equal((await generate(config(), "hello", signal(), async () => response(raw(answer + "\nThat's the answer.")))).kind, "ready");
+  // Nothing usable stays an error, never a half-parsed guess.
+  await assert.rejects(generate(config(), "hello", signal(), async () => response(raw("no object here"))), errorCode("invalid"));
+  await assert.rejects(generate(config(), "hello", signal(), async () => response(raw('{"english":"truncated"'))), errorCode("invalid"));
 });
 
 test("bad envelope/JSON/English rejected; unfinished outputs never shown as full translations", async () => {
@@ -419,13 +456,21 @@ test("explanations that contradict the English or use formula labels fall back t
   assert.equal(usesFormula("中文“现在”放前面，英文 now 放句尾。", "It works now."), false);
   assert.equal(usesFormula("keep + doing", "keep doing it."), false, "a word from the english is not a label");
   const english = "clarify the task objectives.";
-  for (const grammar of [
-    { excerpt: "task objectives", pattern: "clarify 后接内容", explanation: "后面的 task objectives 保持不变，不加 s。" },
-    { excerpt: "clarify the task", pattern: "verb + noun", explanation: "clarify 后面直接接要明确的内容。" },
-  ]) {
-    const result = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english, grammar })));
-    assert.deepEqual(result, { kind: "partial", english });
-  }
+  // A contradiction in the explanation still drops the point.
+  const contradicted = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
+    grammar: { excerpt: "task objectives", pattern: "clarify 后接内容", explanation: "后面的 task objectives 保持不变，不加 s。" } })));
+  assert.deepEqual(contradicted, { kind: "partial", english });
+  // pattern is stored metadata that neither the panel nor the review page shows, so an opaque label
+  // there must not discard an explanation the user can actually read.
+  const labelled = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
+    grammar: { excerpt: "clarify the task", pattern: "verb + noun", explanation: "clarify 后面直接接要明确的内容。" } })));
+  assert.equal(labelled.kind, "ready");
+  // The reported regression: English-only input kept its English but lost a readable explanation.
+  const own = await generate(config(), "I don't see it", signal(), async () => response(provider({
+    english: "I don't see it",
+    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanation: "一般现在时的否定句使用 don't，后面的动词保持原形。" } })));
+  assert.deepEqual(own, { kind: "ready", english: "I don't see it",
+    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanation: "一般现在时的否定句使用 don't，后面的动词保持原形。" } });
   const kept = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
     grammar: { excerpt: "task objectives", pattern: "objectives 加 s", explanation: "目标不止一个，objectives 要加 s。" } })));
   assert.equal(kept.kind, "ready");
@@ -439,7 +484,11 @@ test("word notes are kept only when copied from the English; they survive invali
     { word: "data", meaning: "数据" },
   ], english), [
     { word: "hard-coded", meaning: "写死的" }, { word: "API", meaning: "接口" }, { word: "mocked", meaning: "模拟的" },
-  ], "case follows the English, partial words and duplicates are dropped, at most three");
+    { word: "data", meaning: "数据" },
+  ], "case follows the English; partial words and duplicates are dropped, nothing is capped at three anymore");
+  // The row is a safety bound rather than a teaching limit: a long sentence can need many entries.
+  const many = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
+  assert.equal(parseWords(many.split(" ").map(word => ({ word, meaning: `${word} 的意思` })), many).length, 8);
   assert.deepEqual(parseWords([{ word: "hard-coded", meaning: "写死的" }, { word: "is hard-coded", meaning: "被写死" }], english),
     [{ word: "hard-coded", meaning: "写死的" }], "overlapping entries are dropped");
   assert.deepEqual(parseWords("not a list", english), []);
@@ -478,10 +527,12 @@ test("the prompt stays concise and delegates word and grammar choices", () => {
     /把消息翻译成自然、直接的英语/, /已是英语就改正其中的错误，大小写和标点不算错误/,
     /根据上下文修正同音错别字/, /「图片」「文件」「链接」.*直接忽略/,
     /根据英语表达习惯调整语序/, /保留所有细节、数字、代码和标识符/,
-    /仅返回 JSON/, /words 列最值得讲解的单词或短语，跳过基础词/, /word 用 english 里的原样拼写/,
+    /仅返回 JSON/, /words 逐个解释 english 里值得学的单词和短语/, /有难度的都要讲/, /word 用 english 里的原样拼写/,
     /中英混合说明其中用中文写的词不会说/, /输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点/,
-    /grammar 讲最值得讲解的一个语法点/, /excerpt 从 english（而非输入）原样复制/,
-    /不用「动词 \+ 名词」这类公式/, /输入里的英语有错误时优先讲该错误，并填写 correction/,
-    /只写最主要的一处改动涉及的几个词，不写整句/, /中文片段较长时优先讲这个片段的完整说法/, /没有错误就省略 correction/,
+    // The grammar point must teach how to say this kind of sentence, not just when it is used.
+    /grammar 讲这类话英语怎么说/, /用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思/,
+    /excerpt 从 english（而非输入）原样复制/,
+    /输入里的英语有错误时优先讲该错误，并填写 correction/,
+    /只写最主要的一处改动涉及的几个词，不写整句/, /没有错误就省略 correction/,
   ]) assert.match(SYSTEM_PROMPT, requirement);
 });

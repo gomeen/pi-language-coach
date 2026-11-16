@@ -1,7 +1,7 @@
 import type { ApiProtocol, CoachConfig } from "./config.ts";
 import { hasProse, stripPathsAndLinks } from "./input.ts";
 
-export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。仅返回 JSON：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。words 列最值得讲解的单词或短语，跳过基础词，word 用 english 里的原样拼写；输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点。grammar 讲最值得讲解的一个语法点：excerpt 从 english（而非输入）原样复制；pattern 和 explanation 用简洁中文，不用「动词 + 名词」这类公式，也不用从句、不定式、情态动词这类术语；输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；中文片段较长时优先讲这个片段的完整说法；没有错误就省略 correction。`;
+export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。仅返回 JSON：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。words 逐个解释 english 里值得学的单词和短语：有难度的都要讲，跳过 it、this、code 这类基础词，按在句中的先后顺序，最多 8 个；word 用 english 里的原样拼写；输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点。grammar 讲这类话英语怎么说：用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思，用 english 里的真实单词举例；不要只写「用于询问……」这类意思，也不用动名词、从句、不定式这类说法，直接写成「后面接 explaining grammar 这样的 -ing 形式」这种看得懂的话；excerpt 从 english（而非输入）原样复制；pattern 写这个句式的简短中文名；explanation 用简洁中文；输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
 
 export interface Grammar {
   excerpt: string;
@@ -20,7 +20,9 @@ export type Generation =
   | { kind: "ready"; english: string; grammar: Grammar; words?: Word[] }
   | { kind: "partial"; english: string; words?: Word[] };
 
-const MAX_WORDS = 3;
+// A safety bound, not a target: the prompt asks for every word the user might not know, and a long
+// sentence can honestly need this many. Three was cutting real teaching material off the row.
+const MAX_WORDS = 8;
 /** Keep only entries whose word really occurs in the English, spelled as there; drop the rest one by one. */
 export function parseWords(value: unknown, english: string): Word[] {
   if (!Array.isArray(value)) return [];
@@ -29,7 +31,7 @@ export function parseWords(value: unknown, english: string): Word[] {
     if (result.length === MAX_WORDS) break;
     if (!object(item) || !nonempty(item.word) || !nonempty(item.meaning)) continue;
     const word = item.word.trim(), meaning = item.meaning.trim();
-    if (Array.from(word).length > 40 || Array.from(meaning).length > 40 || !/\p{Script=Han}/u.test(meaning)) continue;
+    if (Array.from(word).length > 40 || Array.from(meaning).length > 60 || !/\p{Script=Han}/u.test(meaning)) continue;
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const found = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu").exec(english);
     // Skip duplicates and overlaps such as "requirements" next to "meet the requirements".
@@ -225,8 +227,31 @@ function parsePayload(raw: string, original: string): Generation {
   let text = raw;
   const fence = /^\`\`\`(?:json)?\s*\n?([\s\S]*?)\n?\`\`\`$/i.exec(text);
   if (fence) text = fence[1]!.trim();
-  let result: unknown;
-  try { result = JSON.parse(text); } catch { throw new GenerationError("invalid"); }
+  // The model occasionally narrates before the answer ("I'll inspect the working tree…") and only then
+  // emits the object. Recover the last balanced top-level JSON object instead of discarding a valid answer.
+  const parsed = (value: string): unknown => { try { return JSON.parse(value); } catch { return undefined; } };
+  let result = parsed(text);
+  if (result === undefined) {
+    const candidates: string[] = [];
+    let depth = 0, start = -1, quoted = false, escaped = false;
+    for (let index = 0; index < text.length; index++) {
+      const character = text[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') quoted = depth > 0;
+      else if (character === "{") { if (depth === 0) start = index; depth++; }
+      else if (character === "}" && depth > 0 && --depth === 0) candidates.push(text.slice(start, index + 1));
+    }
+    for (const candidate of candidates.reverse()) {
+      result = parsed(candidate);
+      if (result !== undefined) break;
+    }
+  }
+  if (result === undefined) throw new GenerationError("invalid");
   if (!object(result) || !nonempty(result.english)) throw new GenerationError("invalid");
   // Display the model's casing; compare case-insensitively.
   const english = result.english;
@@ -243,19 +268,25 @@ function parsePayload(raw: string, original: string): Generation {
     return { kind: "partial", english, ...words };
   }
   // Showing no rule beats teaching a false one or the formula style the user found unreadable.
+  // Only the explanation is judged: pattern is stored metadata that neither the panel nor the review
+  // page displays, so an unreadable label there must not throw away a readable explanation.
   if (contradictsEnding(grammar.explanation, english) || inventsPhrase(grammar.explanation, english) ||
-      usesFormula(`${grammar.pattern} ${grammar.explanation}`, english)) {
+      usesFormula(grammar.explanation, english)) {
     return { kind: "partial", english, ...words };
   }
   // An optional correction must compare an English span actually in the submitted input with one in the result.
   // Translating Chinese is never a correction; drop unverifiable suggestions rather than teaching an invented edit.
-  const change = typeof grammar.correction === "string"
-    ? /^\s*(.+?)\s*→\s*(.+?)\s*$/u.exec(grammar.correction) : null;
-  // Show both sides as actually written; casing-only edits are not taught.
-  const before = change && /[A-Za-z]/.test(change[1]!) && !/\p{Script=Han}/u.test(change[1]!)
-    ? span(original, change[1]!) : undefined;
-  const after = change ? span(english, change[2]!) : undefined;
-  const correction = before && after && before.toLowerCase() !== after.toLowerCase() ? `${before} → ${after}` : undefined;
+  // Several edits may be listed as "a → b; c → d"; each pair is checked on its own and the rest are kept.
+  const parts = typeof grammar.correction === "string" ? grammar.correction.split(/[;；]/) : [];
+  const verified = parts.flatMap((part) => {
+    const change = /^\s*(.+?)\s*→\s*(.+?)\s*$/u.exec(part);
+    if (!change) return [];
+    // Show both sides as actually written; casing-only edits are not taught.
+    const before = /[A-Za-z]/.test(change[1]!) && !/\p{Script=Han}/u.test(change[1]!) ? span(original, change[1]!) : undefined;
+    const after = span(english, change[2]!);
+    return before && after && before.toLowerCase() !== after.toLowerCase() ? [`${before} → ${after}`] : [];
+  });
+  const correction = verified.length ? verified.join("；") : undefined;
   return {
     kind: "ready", english,
     grammar: {

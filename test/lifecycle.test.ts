@@ -186,7 +186,7 @@ test("only results mount a widget; loading, failure and skip remove it entirely"
   await h.command("retry"); await tick();
   work.calls[2]!.resolve({ kind: "partial", english: "Second." }); await tick();
   assert.equal(h.mounted, true, "valid English without grammar is still a result");
-  assert.equal(h.lines().length, 3);
+  assert.equal(h.lines().length, 2, "原文 and the English only: no invented grammar row");
   h.input("!skip");
   assert.equal(h.mounted, false, "skip removes an existing result");
   await h.command("on");
