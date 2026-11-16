@@ -8,7 +8,7 @@ import { saveLesson, storageDirectory, type Lesson } from "../src/storage.ts";
 const lesson: Lesson = {
   original: "请先不要修改 src/index.ts。",
   english: "Don't modify src/index.ts yet.",
-  grammar: { excerpt: "Don't modify", pattern: "Don't + base verb", explanation: "否定祈使句。" },
+  grammar: { excerpt: "Don't modify", pattern: "Don't + base verb", explanations: ["否定祈使句。"] },
 };
 
 async function temporary(run: (directory: string) => Promise<void>) {

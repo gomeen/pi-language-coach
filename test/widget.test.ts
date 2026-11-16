@@ -12,7 +12,7 @@ function plainTerminal(render: () => string[]): string[] {
 test("visible states wrap to rows fitting CJK/emoji terminal widths", () => {
   const states: CoachState[] = [
     { kind: "ready", english: "中英 mixed 👨‍👩‍👧‍👦 café e\u0301".repeat(20),
-      grammar: { excerpt: "mixed", pattern: "形容词", explanation: "中文解释 🧑🏽‍💻".repeat(20), correction: "修正" } },
+      grammar: { excerpt: "mixed", pattern: "形容词", explanations: ["中文解释 🧑🏽‍💻".repeat(20)], correction: "修正" } },
     { kind: "partial", english: "可保留的英文" },
   ];
   for (const state of states) {
@@ -32,7 +32,7 @@ test("visible states wrap to rows fitting CJK/emoji terminal widths", () => {
 test("opaque grammar formulas stay hidden while practical explanation remains visible", () => {
   const excerpt = "Do not modify the code, and do not run npm install.";
   const state: CoachState = { kind: "ready", english: excerpt, grammar: {
-    excerpt, pattern: "don't + adverb + base verb", explanation: "要说不要修改代码，可以用 Do not modify。",
+    excerpt, pattern: "don't + adverb + base verb", explanations: ["要说不要修改代码，可以用 Do not modify。"],
   } };
   const lines = new CoachWidget(() => state).render(80);
   assert.equal(lines.length, 2);
@@ -49,7 +49,7 @@ test("opaque grammar formulas stay hidden while practical explanation remains vi
 
 test("the submitted prompt is shown above the translation, never displacing the notice", () => {
   const state: CoachState = { kind: "ready", english: "I have a bug.", grammar: {
-    excerpt: "I have", pattern: "p", explanation: "have 表状态。" } };
+    excerpt: "I have", pattern: "p", explanations: ["have 表状态。"] } };
   const kinds: string[] = [];
   const widget = new CoachWidget(() => state, row => { kinds.push(row); return ""; }, undefined, "I has a bug.");
   const lines = widget.render(200);
@@ -83,21 +83,22 @@ test("the submitted prompt is shown above the translation, never displacing the 
 
 test("the wrong word in the original and the fixed word in the English are underlined", () => {
   const state: CoachState = { kind: "ready", english: "He doesn't know how to fix this bug.", grammar: {
-    excerpt: "He doesn't know", pattern: "主语是 he", explanation: "主语 He 是第三人称单数，所以用 doesn't。",
+    excerpt: "He doesn't know", pattern: "主语是 he", explanations: ["主语 He 是第三人称单数，所以用 doesn't。"],
     correction: "He don't → He doesn't" } };
   const widget = new CoachWidget(() => state, (_row, text) => text, undefined, "He don't know how to fix this bug.");
   const plain = plainTerminal(() => widget.render(200));
   assert.equal(plain[0], "原文：\x1b[4mHe don't\x1b[24m know how to fix this bug.");
   assert.equal(plain[1], "英文：\x1b[4mHe doesn't\x1b[24m know how to fix this bug.");
-  // The correction is its own numbered row; only the two English rows are marked.
+  // The correction is its own labelled row, outside the numbered points; only the two English
+  // rows are marked.
   assert.equal(plain[2], "语法：1. 主语 He 是第三人称单数，所以用 doesn't。");
-  assert.equal(plain[3], "2. 纠正：He don't → He doesn't");
+  assert.equal(plain[3], "纠正：He don't → He doesn't");
   assert.ok(widget.render(200).every(line => visibleWidth(line) <= 200));
 });
 
 test("marks never break wrapping, width limits or the escape pairing", () => {
   const state: CoachState = { kind: "ready", english: "Yesterday I went to the meeting and discussed it.", grammar: {
-    excerpt: "went to the meeting", pattern: "过去的事", explanation: "Yesterday 说明是过去，动作要用过去式。",
+    excerpt: "went to the meeting", pattern: "过去的事", explanations: ["Yesterday 说明是过去，动作要用过去式。"],
     correction: "go → went；discuss → discussed" } };
   const widget = new CoachWidget(() => state, (_row, text) => text, undefined, "Yesterday I go to the meeting and discuss it");
   for (const width of [1, 2, 3, 6, 12, 20, 40, 200]) {
@@ -114,7 +115,7 @@ test("marks never break wrapping, width limits or the escape pairing", () => {
 
 test("marks follow the correction pairs and stay out of rows without them", () => {
   const plain: CoachState = { kind: "ready", english: "I have a question.", grammar: {
-    excerpt: "I have", pattern: "主语是 I", explanation: "主语是 I 时用 have。" } };
+    excerpt: "I have", pattern: "主语是 I", explanations: ["主语是 I 时用 have。"] } };
   assert.deepEqual(new CoachWidget(() => plain, (_r, t) => t, undefined, "I has a question.").render(200),
     ["原文：I has a question.", "英文：I have a question.", "语法：1. 主语是 I 时用 have。"]);
   const partial: CoachState = { kind: "partial", english: "Hello." };
@@ -171,29 +172,60 @@ test("strip hostile ANSI/OSC/APC/control/bidi and Unicode line separators before
 test("words and grammar get a row each, and a missing part simply has no row", () => {
   const words = [{ word: "hard-coded", meaning: "写死的" }, { word: "sign-off", meaning: "验收确认" }];
   const ready: CoachState = { kind: "ready", english: "Nothing is hard-coded.", words, grammar: {
-    excerpt: "Nothing is", pattern: "nothing 自带否定", explanation: "nothing 后面不再加 not。" } };
+    excerpt: "Nothing is", pattern: "nothing 自带否定", explanations: ["nothing 后面不再加 not。"] } };
   assert.deepEqual(new CoachWidget(() => ready).render(200), [
     "英文：Nothing is hard-coded.",
     "词：1. hard-coded 写死的",
-    "2. sign-off 验收确认",
+    "    2. sign-off 验收确认",
     "语法：1. nothing 后面不再加 not。",
   ]);
   // Invalid grammar keeps the words and drops only the grammar row; nothing is invented in its place.
   const partial: CoachState = { kind: "partial", english: "Nothing is hard-coded.", words };
   assert.deepEqual(new CoachWidget(() => partial).render(200),
-    ["英文：Nothing is hard-coded.", "词：1. hard-coded 写死的", "2. sign-off 验收确认"]);
+    ["英文：Nothing is hard-coded.", "词：1. hard-coded 写死的", "    2. sign-off 验收确认"]);
   assert.deepEqual(new CoachWidget(() => ({ kind: "partial", english: "Second." })).render(200), ["英文：Second."]);
   // Grammar without words is two rows, words without grammar is two rows.
-  const noWords: CoachState = { kind: "ready", english: "Keep it.", grammar: { excerpt: "Keep", pattern: "p", explanation: "短。" } };
+  const noWords: CoachState = { kind: "ready", english: "Keep it.", grammar: { excerpt: "Keep", pattern: "p", explanations: ["短。"] } };
   assert.equal(new CoachWidget(() => noWords).render(200).length, 2);
   const lines = new CoachWidget(() => ready).render(20);
   assert.ok(lines.length > 3, "long words and grammar wrap onto more rows");
 });
 
+test("items hang under item 1 so the numbers keep one column, wrapped lines included", () => {
+  const state: CoachState = { kind: "ready", english: "X.", words: [
+    { word: "alpha", meaning: "阿尔法" }, { word: "beta", meaning: "贝塔" }, { word: "gamma", meaning: "伽马" }],
+    grammar: { excerpt: "X", pattern: "p",
+      explanations: ["第一条说明用 X 开头，后面接一个比较长的内容好让它换行。", "第二条说明。", "第三条说明。"] } };
+  const lines = new CoachWidget(() => state, (_row, text) => text).render(40).map(stripTerminalSequences);
+  // 词：/语法： are both three columns wide, so «2.» and «3.» sit under «1.» of their own section.
+  assert.equal(lines.find(line => line.startsWith("    2. beta")), "    2. beta 贝塔");
+  assert.equal(lines.find(line => line.startsWith("    3. gamma")), "    3. gamma 伽马");
+  assert.ok(lines.some(line => line.startsWith("      2. 第二条说明。")), "grammar items use the 语法： column");
+  // A wrapped item continues under its text («语法：1. » is 9 columns), not at the left edge.
+  assert.ok(lines.some(line => line.startsWith("         比较长的内容")),
+    `continuation is indented: ${JSON.stringify(lines)}`);
+  for (const line of lines) assert.ok(visibleWidth(line) <= 40, line);
+  // The cap lives in the parser, not the widget: whatever the state holds is what the panel shows,
+  // each entry on its own numbered row.
+  const many = new CoachWidget(() => ({ ...state,
+    words: ["alpha", "beta", "gamma"].map(word => ({ word, meaning: "意思" })),
+    grammar: { excerpt: "X", pattern: "p", explanations: ["一。", "二。", "三。"] } })).render(200);
+  assert.equal(many.filter(line => /^词：|^ {4}\d\./.test(line)).length, 3);
+  assert.equal(many.filter(line => /^语法：|^ {6}\d\./.test(line)).length, 3);
+  // The save notice prefixes the first grammar item; later items shift by the same width so the
+  // numbers stay in one column instead of jumping left under the notice.
+  const noticed = new CoachWidget(() => state, (_row, text) => text, "已收藏").render(60).map(stripTerminalSequences);
+  const first = noticed.find(line => line.startsWith("已收藏 · 语法：1. "))!;
+  const second = noticed.find(line => line.includes("2. 第二条说明。"))!;
+  // Compare columns, not code units: the label is CJK and one character is two cells wide.
+  assert.equal(visibleWidth(second.slice(0, second.indexOf("2. "))),
+    visibleWidth(first.slice(0, first.indexOf("1. "))), "the numbers line up under the notice too");
+});
+
 test("long English and notes wrap completely without splitting CJK or emoji, short text stays two rows", () => {
   const english = "Hello 😀 世界 " + "word ".repeat(40) + "END";
   const state: CoachState = { kind: "ready", english, grammar: {
-    excerpt: "Hello", pattern: "p", explanation: "中文说明".repeat(20) + "结束" } };
+    excerpt: "Hello", pattern: "p", explanations: ["中文说明".repeat(20) + "结束"] } };
   let color = "31";
   const widget = new CoachWidget(() => state, (row, text) => `\x1b[${color}m${row === "english" ? "E" : "N"}${text}\x1b[0m`);
   const lines = widget.render(20);
@@ -208,7 +240,7 @@ test("long English and notes wrap completely without splitting CJK or emoji, sho
   assert.ok(lines.every(line => /^\x1b\[31m/.test(line)), "each row is colored separately");
   color = "32";
   assert.match(widget.render(20)[0]!, /\x1b\[32m/, "theme is evaluated on every render");
-  const short = new CoachWidget(() => ({ kind: "ready", english: "Keep it.", grammar: { excerpt: "Keep", pattern: "p", explanation: "短。" } }));
+  const short = new CoachWidget(() => ({ kind: "ready", english: "Keep it.", grammar: { excerpt: "Keep", pattern: "p", explanations: ["短。"] } }));
   assert.equal(short.render(80).length, 2);
   for (const width of [1, 2, 3]) {
     const narrow = new CoachWidget(() => ({ kind: "partial", english: "ABCDE" })).render(width);

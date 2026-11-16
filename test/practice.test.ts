@@ -14,7 +14,7 @@ import type { Generation } from "../src/generate.ts";
 import type { Lesson } from "../src/storage.ts";
 
 const generation: Generation = { kind: "ready", english: "Outline the goals first.", grammar: {
-  excerpt: "Outline", pattern: "动词开头", explanation: "祈使句用动词原形开头。" } };
+  excerpt: "Outline", pattern: "动词开头", explanations: ["祈使句用动词原形开头。"] } };
 const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-practice-"));
 const flush = async (times = 3) => { for (let i = 0; i < times; i++) await new Promise(resolve => setImmediate(resolve)); };
 

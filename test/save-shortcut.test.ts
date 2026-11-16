@@ -9,7 +9,7 @@ const settings = { kind: "configured", config: {
 } } as const;
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const generation: Generation = { kind: "ready", english: "Hello.", grammar: {
-  excerpt: "Hello", pattern: "greeting", explanation: "问候语。",
+  excerpt: "Hello", pattern: "greeting", explanations: ["问候语。"],
 } };
 
 test("lesson snapshots match only the visible completed submission and do not expose key or draft", async () => {
@@ -21,8 +21,8 @@ test("lesson snapshots match only the visible completed submission and do not ex
   const snapshot = controller.lesson();
   assert.deepEqual(snapshot, { original: "你好", english: "Hello.", grammar: generation.grammar });
   assert.doesNotMatch(JSON.stringify(snapshot), /synthetic|apiKey|endpoint/);
-  snapshot!.grammar!.explanation = "mutated";
-  assert.equal(controller.lesson()!.grammar!.explanation, "问候语。");
+  snapshot!.grammar!.explanations[0] = "mutated";
+  assert.equal(controller.lesson()!.grammar!.explanations[0], "问候语。");
   controller.submit("!skip");
   assert.equal(controller.lesson(), undefined);
   controller.command("retry"); await tick();

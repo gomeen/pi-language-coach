@@ -18,7 +18,7 @@ export function config(overrides: Partial<CoachConfig> = {}): CoachConfig {
 }
 const valid = {
   english: "do not delete src/index.ts or use --force.",
-  grammar: { excerpt: "do not delete", pattern: "表达禁止", explanation: "想说“不要删除”时，可以用 do not delete。" },
+  grammar: { excerpt: "do not delete", pattern: "表达禁止", explanations: ["想说“不要删除”时，可以用 do not delete。"] },
 };
 function provider(result: unknown = valid, stop: unknown = "end_turn", fenced = false): string {
   const json = JSON.stringify(result);
@@ -182,19 +182,20 @@ test("outbound coaching JSON excludes paths, complete links and image representa
 test("normal casing is displayed as the provider returned it; matching ignores case", async () => {
   const mixed = {
     english: "I'll check the API before releasing M2.",
-    grammar: { excerpt: "i'll check", pattern: "will 后不变", explanation: "I'll = I will；will 后面的 check 不变。" },
+    grammar: { excerpt: "i'll check", pattern: "will 后不变", explanations: ["I'll = I will；will 后面的 check 不变。"] },
   };
   const result = await generate(config(), "检查后再发布", signal(), async () => response(provider(mixed)));
   assert.deepEqual(result, {
     kind: "ready", english: "I'll check the API before releasing M2.",
-    grammar: { excerpt: "I'll check", pattern: "will 后不变", explanation: "I'll = I will；will 后面的 check 不变。" },
+    // One statement per row, so the «；» in one string becomes two points.
+    grammar: { excerpt: "I'll check", pattern: "will 后不变", explanations: ["I'll = I will", "will 后面的 check 不变。"] },
   });
   const partial = await generate(config(), "检查后再发布", signal(), async () => response(provider({ english: mixed.english })));
   assert.deepEqual(partial, { kind: "partial", english: mixed.english });
 });
 
 test("corrections keep the original spelling of both sides and drop casing-only changes", async () => {
-  const grammar = { excerpt: "He doesn't", pattern: "doesn't 后不变", explanation: "he 后用 doesn't，后面的 know 不加 s。" };
+  const grammar = { excerpt: "He doesn't", pattern: "doesn't 后不变", explanations: ["he 后用 doesn't，后面的 know 不加 s。"] };
   for (const [original, english, proposed, expected] of [
     ["He Don't Know.", "He doesn't know.", "don't → doesn't", "Don't → doesn't"],
     ["He don't know.", "He doesn't know.", "he don't → he doesn't", "He don't → He doesn't"],
@@ -212,7 +213,7 @@ test("corrections keep the original spelling of both sides and drop casing-only 
 test("several edits in one correction are each verified instead of dropping the whole line", async () => {
   const original = "Yesterday I go to the meeting and discuss it";
   const english = "Yesterday I went to the meeting and discussed it.";
-  const grammar = { excerpt: "went to the meeting", pattern: "过去的事", explanation: "Yesterday 说明是过去，动作要用过去式。" };
+  const grammar = { excerpt: "went to the meeting", pattern: "过去的事", explanations: ["Yesterday 说明是过去，动作要用过去式。"] };
   for (const [proposed, expected] of [
     ["go → went; discuss → discussed", "go → went；discuss → discussed"],
     ["go to → went to；discuss → discussed", "go to → went to；discuss → discussed"],
@@ -348,8 +349,8 @@ test("bad envelope/JSON/English rejected; unfinished outputs never shown as full
 test("bad grammar keeps entire valid English with partial state; exact excerpt required", async () => {
   const english = valid.english.repeat(100);
   for (const grammar of [undefined, null, {}, { ...valid.grammar, excerpt: "not in english" },
-    { ...valid.grammar, explanation: "Only English" }, { ...valid.grammar, correction: 42 },
-    { ...valid.grammar, pattern: "" }, { ...valid.grammar, explanation: "中".repeat(501) }]) {
+    { ...valid.grammar, explanations: ["Only English"] }, { ...valid.grammar, correction: 42 },
+    { ...valid.grammar, pattern: "" }, { ...valid.grammar, explanations: ["中".repeat(101)] }]) {
     const result = await generate(config(), "hello", signal(), async () => response(provider({ english, grammar })));
     assert.deepEqual(result, { kind: "partial", english });
   }
@@ -358,7 +359,7 @@ test("bad grammar keeps entire valid English with partial state; exact excerpt r
 test("a blank correction field is read as \"nothing to fix\", not as broken grammar", async () => {
   const english = "Please don't change the API yet; just outline a plan first.";
   const grammar = { excerpt: "outline a plan", pattern: "先给方案",
-    explanation: "outline a plan 是说先给出方案要点，don't 后面接动词原形。" };
+    explanations: ["outline a plan 是说先给出方案要点，don't 后面接动词原形。"] };
   for (const correction of ["", "   "]) {
     const result = await generate(config(), english, signal(),
       async () => response(provider({ english, grammar: { ...grammar, correction } })));
@@ -369,7 +370,7 @@ test("a blank correction field is read as \"nothing to fix\", not as broken gram
 test("a correction is retained only when its before/after phrases appear in input and final English", async () => {
   const original = "He don't know how to fix this bug.";
   const english = "He doesn't know how to fix this bug.";
-  const grammar = { excerpt: "doesn't know", pattern: "说他不知道", explanation: "说他不知道时用 doesn't know，后面的 know 不加 s。" };
+  const grammar = { excerpt: "doesn't know", pattern: "说他不知道", explanations: ["说他不知道时用 doesn't know，后面的 know 不加 s。"] };
   for (const [proposed, expected] of [
     ["don't → doesn't", "don't → doesn't"],
     ["don't know how fix → doesn't know how to fix", undefined],
@@ -469,21 +470,21 @@ test("explanations that contradict the English or use formula labels fall back t
   const english = "clarify the task objectives.";
   // A contradiction in the explanation still drops the point.
   const contradicted = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
-    grammar: { excerpt: "task objectives", pattern: "clarify 后接内容", explanation: "后面的 task objectives 保持不变，不加 s。" } })));
+    grammar: { excerpt: "task objectives", pattern: "clarify 后接内容", explanations: ["后面的 task objectives 保持不变，不加 s。"] } })));
   assert.deepEqual(contradicted, { kind: "partial", english });
   // pattern is stored metadata that neither the panel nor the review page shows, so an opaque label
   // there must not discard an explanation the user can actually read.
   const labelled = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
-    grammar: { excerpt: "clarify the task", pattern: "verb + noun", explanation: "clarify 后面直接接要明确的内容。" } })));
+    grammar: { excerpt: "clarify the task", pattern: "verb + noun", explanations: ["clarify 后面直接接要明确的内容。"] } })));
   assert.equal(labelled.kind, "ready");
   // The reported regression: English-only input kept its English but lost a readable explanation.
   const own = await generate(config(), "I don't see it", signal(), async () => response(provider({
     english: "I don't see it",
-    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanation: "一般现在时的否定句使用 don't，后面的动词保持原形。" } })));
+    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanations: ["一般现在时的否定句使用 don't，后面的动词保持原形。"] } })));
   assert.deepEqual(own, { kind: "ready", english: "I don't see it",
-    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanation: "一般现在时的否定句使用 don't，后面的动词保持原形。" } });
+    grammar: { excerpt: "I don't see it", pattern: "don't + 动词原形", explanations: ["一般现在时的否定句使用 don't，后面的动词保持原形。"] } });
   const kept = await generate(config(), "明确任务目标", signal(), async () => response(provider({ english,
-    grammar: { excerpt: "task objectives", pattern: "objectives 加 s", explanation: "目标不止一个，objectives 要加 s。" } })));
+    grammar: { excerpt: "task objectives", pattern: "objectives 加 s", explanations: ["目标不止一个，objectives 要加 s。"] } })));
   assert.equal(kept.kind, "ready");
 });
 
@@ -495,15 +496,14 @@ test("word notes are kept only when copied from the English; they survive invali
     { word: "data", meaning: "数据" },
   ], english), [
     { word: "hard-coded", meaning: "写死的" }, { word: "API", meaning: "接口" }, { word: "mocked", meaning: "模拟的" },
-    { word: "data", meaning: "数据" },
-  ], "case follows the English; partial words and duplicates are dropped, nothing is capped at three anymore");
-  // The row is a safety bound rather than a teaching limit: a long sentence can need many entries.
+  ], "case follows the English; partial words and duplicates are dropped, and the row stops at three");
+  // Three is the panel's limit, not a claim about how much is worth learning.
   const many = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
-  assert.equal(parseWords(many.split(" ").map(word => ({ word, meaning: `${word} 的意思` })), many).length, 8);
+  assert.equal(parseWords(many.split(" ").map(word => ({ word, meaning: `${word} 的意思` })), many).length, 3);
   assert.deepEqual(parseWords([{ word: "hard-coded", meaning: "写死的" }, { word: "is hard-coded", meaning: "被写死" }], english),
     [{ word: "hard-coded", meaning: "写死的" }], "overlapping entries are dropped");
   assert.deepEqual(parseWords("not a list", english), []);
-  const grammar = { excerpt: "nothing is hard-coded", pattern: "nothing 自带否定", explanation: "“没有东西…”用 nothing，后面不再加 not。" };
+  const grammar = { excerpt: "nothing is hard-coded", pattern: "nothing 自带否定", explanations: ["“没有东西…”用 nothing，后面不再加 not。"] };
   const words = [{ word: "hard-coded", meaning: "写死的" }];
   assert.deepEqual(await generate(config(), "没有写死的吧", signal(), async () => response(provider({ english, words, grammar }))),
     { kind: "ready", english, grammar, words });
@@ -515,7 +515,7 @@ test("word notes are kept only when copied from the English; they survive invali
 
 test("mixed Chinese input teaches the word the user could not write in English", async () => {
   const english = "I want to eat watermelon.";
-  const grammar = { excerpt: "want to eat", pattern: "想吃某物", explanation: "想吃某物时说 want to eat，后面直接跟食物。" };
+  const grammar = { excerpt: "want to eat", pattern: "想吃某物", explanations: ["想吃某物时说 want to eat，后面直接跟食物。"] };
   const words = [{ word: "watermelon", meaning: "西瓜" }];
   assert.deepEqual(await generate(config(), "I want to eat 西瓜", signal(), async () => response(provider({ english, grammar, words }))),
     { kind: "ready", english, grammar, words });
@@ -526,42 +526,81 @@ test("mixed Chinese input teaches the word the user could not write in English",
 test("an English grammar error is explained, not only corrected", async () => {
   const english = "He doesn't know how to fix this bug.";
   const grammar = { excerpt: "He doesn't know", pattern: "主语是 he",
-    explanation: "主语是 he 时用 doesn't，不用 don't。", correction: "He don't → He doesn't" };
+    explanations: ["主语是 he 时用 doesn't，不用 don't。"], correction: "He don't → He doesn't" };
   const result = await generate(config(), "He don't know how to fix this bug.", signal(),
     async () => response(provider({ english, grammar })));
   assert.deepEqual(result, { kind: "ready", english, grammar }, "the error itself is the lesson, not dropped as a formula");
 });
 
-test("the prompt stays concise and delegates word and grammar choices", () => {
-  assert.ok(SYSTEM_PROMPT.length < 1000, `prompt is ${SYSTEM_PROMPT.length} characters`);
+test("the prompt keeps the translation rules and the teaching contract", () => {
+  assert.ok(SYSTEM_PROMPT.length < 1600, `prompt is ${SYSTEM_PROMPT.length} characters`);
   for (const requirement of [
     /把消息翻译成自然、直接的英语/, /已是英语就改正其中的错误，大小写和标点不算错误/,
     /根据上下文修正同音错别字/, /「图片」「文件」「链接」.*直接忽略/,
     /根据英语表达习惯调整语序/, /保留所有细节、数字、代码和标识符/,
-    /仅返回 JSON/, /words 逐个解释 english 里值得学的单词和短语/, /有难度的都要讲/, /word 用 english 里的原样拼写/,
-    /中英混合说明其中用中文写的词不会说/, /输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点/,
+    /仅返回 JSON/, /word 用 english 里的原样拼写/, /按句中先后顺序/, /最多 3 个/, /不超过 20 字/,
+    /每条一句独立的话、不超过 50 字/,
+    /中英混合说明其中用中文写的词不会说/,
     // The grammar point must teach how to say this kind of sentence, not just when it is used.
     /grammar 讲这类话英语怎么说/, /用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思/,
-    /excerpt 从 english（而非输入）原样复制/,
-    /输入里的英语有错误时优先讲该错误，并填写 correction/,
+    /excerpt 必须从 english 逐字复制/,
+    /输入里的英语有错误时，把该错误放在 explanations 的第一条/,
     /只写最主要的一处改动涉及的几个词，不写整句/, /没有错误就省略 correction/,
   ]) assert.match(SYSTEM_PROMPT, requirement);
 });
 
+test("both teaching sections are optional, so a plain sentence can teach nothing", () => {
+  // The user does not want a word or a grammar point glued onto every single prompt.
+  assert.match(SYSTEM_PROMPT, /words 和 grammar 都是可选的/);
+  assert.match(SYSTEM_PROMPT, /没有就给 "words":\[\] 或整个省略 grammar/);
+  assert.match(SYSTEM_PROMPT, /空着比讲废话好/);
+  assert.match(SYSTEM_PROMPT, /english 只有一两个词.*省略整个 grammar/);
+  // ...but an English mistake always earns a grammar row, because that is the correction itself.
+  assert.match(SYSTEM_PROMPT, /输入里的英语有错误时，把该错误放在 explanations 的第一条/);
+});
+
+test("a reply that teaches nothing is a valid result, not a failure", async () => {
+  const english = "Continue.";
+  // The model omits both optional sections: the panel shows the English alone, no invented rows.
+  assert.deepEqual(await generate(config(), "继续", signal(), async () => response(provider({ english }))),
+    { kind: "partial", english });
+  // Empty lists are the same answer, not a schema error.
+  assert.deepEqual(await generate(config(), "继续", signal(), async () => response(provider({ english, words: [], grammar: null }))),
+    { kind: "partial", english });
+  // Words without grammar keeps the words; grammar without words keeps the grammar.
+  // The word is displayed in the English's own casing.
+  assert.deepEqual(await generate(config(), "继续", signal(), async () => response(provider({ english,
+    words: [{ word: "continue", meaning: "继续" }] }))),
+    { kind: "partial", english, words: [{ word: "Continue", meaning: "继续" }] });
+});
+
+test("the prompt sets a bar for word value instead of asking for a fixed count", () => {
+  // The old prompt said "有难度的都要讲", which filled the row with fix/show/change.
+  assert.match(SYSTEM_PROMPT, /这些不要讲：fix、show、change、build/);
+  assert.match(SYSTEM_PROMPT, /你输入里已经用英文写过的词/);
+  assert.match(SYSTEM_PROMPT, /从中文直译出来的长名词短语/);
+  assert.match(SYSTEM_PROMPT, /超过 3 个词的整段话/);
+  assert.match(SYSTEM_PROMPT, /只讲像 popup、clickable、hardcoded、routing 这种真能学到东西的词/);
+  // A word the user could only write in Chinese is the one thing that is always worth teaching.
+  assert.match(SYSTEM_PROMPT, /输入里用中文写、english 里换成英文的那个词要讲/);
+  assert.doesNotMatch(SYSTEM_PROMPT, /有难度的都要讲/, "the old blanket demand is gone");
+});
+
 test("the prompt is one labelled block per job instead of a 40-clause paragraph", () => {
   const blocks = SYSTEM_PROMPT.split("\n\n");
-  assert.equal(blocks.length, 5, "input/translation, output shape, words, grammar, correction");
+  assert.equal(blocks.length, 6, "translation, output shape, optionality, words, grammar, correction");
   assert.ok(blocks.every(block => block.trim().length > 0));
   assert.match(blocks[1]!, /^仅返回 JSON，不要任何前言、说明或代码块/);
-  assert.match(blocks[2]!, /^words 逐个解释/);
-  assert.match(blocks[3]!, /^grammar 讲这类话英语怎么说/);
-  assert.match(blocks[4]!, /^输入里的英语有错误时优先讲该错误/);
+  assert.match(blocks[2]!, /^words 和 grammar 都是可选的/);
+  assert.match(blocks[3]!, /^words 讲 english 里你可能猜不出意思/);
+  assert.match(blocks[4]!, /^grammar 讲这类话英语怎么说/);
+  assert.match(blocks[5]!, /^输入里的英语有错误时，把该错误放在 explanations 的第一条/);
 });
 
 test("the prompt names every length cap and banned term the parser silently enforces", () => {
   // A cap the model is not told about throws the whole grammar point away as invalid (partial).
   assert.match(SYSTEM_PROMPT, /meaning .*不超过 20 字/);
-  assert.match(SYSTEM_PROMPT, /explanation .*不超过 100 字/);
+  assert.match(SYSTEM_PROMPT, /不超过 50 字/);
   // The «+» formula shape is rejected too, so the ban has to name it, not only the terms.
   assert.match(SYSTEM_PROMPT, /不要写成「动词 \+ 名词」/);
   for (const term of ["动名词", "分词", "从句", "不定式", "谓语", "表语", "情态动词"]) {

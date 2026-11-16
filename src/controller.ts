@@ -150,7 +150,10 @@ export class CoachController {
       // Only image locations are dropped: a typed file name or link stays in the saved original.
       original: stripImageReferences(this.lastPrompt),
       english: this.state.english,
-      ...(this.state.kind === "ready" ? { grammar: { ...this.state.grammar } } : {}),
+      // The points are a list, so the snapshot copies the array too: a caller editing it must not
+      // reach back into the state the panel is still rendering.
+      ...(this.state.kind === "ready"
+        ? { grammar: { ...this.state.grammar, explanations: [...this.state.grammar.explanations] } } : {}),
       ...(this.state.words?.length ? { words: this.state.words.map(({ word, meaning }) => ({ word, meaning })) } : {}),
     };
   }

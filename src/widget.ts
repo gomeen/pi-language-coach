@@ -1,4 +1,4 @@
-import { stripTerminalSequences, truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 import type { CoachState } from "./controller.ts";
 
 /** Semantic widget rows; the colorize callback keys theme colors off these. */
@@ -60,11 +60,19 @@ export function hasResult(state: CoachState): state is Extract<CoachState, { kin
   return state.kind === "ready" || state.kind === "partial";
 }
 
+/** A labelled section: the label sits in front of item 1, every later item starts under it, so the
+ *  numbers line up on one column instead of drifting back to the left edge. */
+export interface Section {
+  label: string;
+  items: string[];
+}
+
 /** Submitted prompt (when known and not hidden), then English, then one numbered row per word and per
- *  grammar item; each wraps to as many rows as the terminal width needs. No border or padding. */
-function rows(state: CoachState, prompt?: string, showOriginal = true): Array<[CoachRow, string, string[]?]> | undefined {
+ *  grammar point; each wraps to as many rows as the terminal width needs. No border or padding. */
+function sections(state: CoachState, prompt?: string, showOriginal = true):
+  Array<[CoachRow, string | Section, string[]?]> | undefined {
   if (state.kind !== "ready" && state.kind !== "partial") return undefined;
-  const lines: Array<[CoachRow, string, string[]?]> = [];
+  const lines: Array<[CoachRow, string | Section, string[]?]> = [];
   // The wrong word is marked in what was typed, the fix is marked in the English, so both are visible at once.
   const edited = state.kind === "ready" ? editedSpans(state.grammar.correction) : { before: [], after: [] };
   // Show what was typed this time above the translation for easy comparison; safeText flattens it later.
@@ -72,19 +80,29 @@ function rows(state: CoachState, prompt?: string, showOriginal = true): Array<[C
   if (submitted) lines.push(["input", `原文：${submitted}`, edited.before]);
   lines.push(["english", `英文：${state.english}`, edited.after]);
   // One row per word: joined with «·» a long list read as a paragraph and its items were hard to pick out.
-  // The label stays on the first row rather than taking a row of its own.
-  for (const [index, { word, meaning }] of (state.words ?? []).entries()) {
-    lines.push(["words", `${index === 0 ? "词：" : ""}${index + 1}. ${word} ${meaning}`]);
+  if (state.words?.length) {
+    lines.push(["words", { label: "词：", items: state.words.map(({ word, meaning }) => `${word} ${meaning}`) }]);
   }
   // The model's pattern field may be an opaque formula (e.g. "don't + adverb + base verb").
   // Keep it in the saved lesson, but show the practical explanation instead.
   if (state.kind === "ready") {
-    const { explanation, correction } = state.grammar;
-    lines.push(["notes", `语法：1. ${explanation}`]);
-    // The edit is a second item, not a clause glued to the explanation with «；纠正：».
-    if (correction) lines.push(["notes", `2. 纠正：${correction}`]);
+    const { explanations, correction } = state.grammar;
+    lines.push(["notes", { label: "语法：", items: explanations }]);
+    // The edit gets its own labelled row instead of a number: it is a fact about this sentence,
+    // not a third point about how to say it, and «纠正：» is the same width as «语法：».
+    if (correction) lines.push(["notes", `纠正：${correction}`]);
   }
   return lines;
+}
+
+/** One renderable row: the item's own text, the head that starts it («词：1. », «2. » or nothing),
+ *  so a wrapped continuation can start under the item's text instead of at the left edge. */
+interface Row { text: string; head: string }
+
+/** Indent a section so item 2 onwards start under item 1, not under the label. */
+function layout({ label, items }: Section): Row[] {
+  const indent = " ".repeat(visibleWidth(label));
+  return items.map((item, index) => ({ text: item, head: `${index === 0 ? label : indent}${index + 1}. ` }));
 }
 
 /** Input, English, then notes; each wraps to as many rows as the terminal width needs. No border or padding. */
@@ -98,21 +116,34 @@ export class CoachWidget implements Component {
   ) {}
 
   render(width: number): string[] {
-    const lines = rows(this.getState(), this.prompt, this.showOriginal);
+    const lines = sections(this.getState(), this.prompt, this.showOriginal);
     if (!lines) return [];
     const columns = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
-    if (!columns) return lines.map(() => "");
+    if (!columns) return lines.flatMap(([, line]) => typeof line === "string" ? [""] : line.items.map(() => ""));
     // The notice rides on the first row of the last section, so it never lands below the point it belongs to.
     const notesAt = lines.findIndex(([row]) => row === "notes");
     const noticeAt = notesAt === -1 ? lines.findIndex(([row]) => row === "words") : notesAt;
     return lines.flatMap(([row, line, marks], index) => {
-      const sanitized = safeText(this.notice && index === noticeAt ? `${this.notice} · ${line}` : line);
-      // Mark before wrapping: wrapTextWithAnsi re-emits the underline on every row it splits across.
-      const text = marks?.length ? markSpans(sanitized, marks) : sanitized;
-      // Wrap plain text, then color each row, so styling never splits an escape sequence.
-      // A glyph wider than a very narrow terminal is clipped for display only.
-      return wrapTextWithAnsi(text, columns).map(part =>
-        truncateToWidth(this.colorize(row, part), columns, "…"));
+      const notice = this.notice && index === noticeAt ? `${this.notice} · ` : "";
+      // A section renders one row per item; a plain row renders itself. Both wrap below.
+      const items: Row[] = typeof line === "string" ? [{ text: line, head: "" }] : layout(line);
+      return items.flatMap(({ text, head }, position) => {
+        // The notice only ever prints once, but every later item of that section is shifted by its
+        // width so the numbers stay in one column instead of jumping left under it.
+        const first = (position === 0 ? notice : " ".repeat(visibleWidth(notice))) + head;
+        const hang = visibleWidth(first);
+        const sanitized = safeText(text);
+        // Mark before wrapping: wrapTextWithAnsi re-emits the underline on every row it splits across.
+        const marked = marks?.length ? markSpans(sanitized, marks) : sanitized;
+        // Wrap the item at the width its head leaves, so «2.» and its continuation start in the
+        // same column; the head itself is prepended afterwards and never eats into a wrapped row.
+        const room = Math.max(1, columns - hang);
+        const continuation = " ".repeat(Math.min(hang, columns - 1));
+        // Wrap plain text, then color each row, so styling never splits an escape sequence.
+        // A glyph wider than a very narrow terminal is clipped for display only.
+        return wrapTextWithAnsi(marked, room).map((part, offset) =>
+          truncateToWidth(this.colorize(row, offset === 0 ? first + part : continuation + part), columns, "…"));
+      });
     });
   }
 

@@ -26,8 +26,8 @@ export async function saveLesson(lesson: Lesson, directory: string): Promise<Sav
   // Explicit fields exclude credentials, host state and any extra runtime properties.
   const content: Lesson = { original: lesson.original, english: lesson.english };
   if (lesson.grammar) {
-    const { excerpt, pattern, explanation, correction } = lesson.grammar;
-    content.grammar = { excerpt, pattern, explanation, ...(correction ? { correction } : {}) };
+    const { excerpt, pattern, explanations, correction } = lesson.grammar;
+    content.grammar = { excerpt, pattern, explanations: [...explanations], ...(correction ? { correction } : {}) };
   }
   // Added after the first format; lessons without words keep their old content hash.
   if (lesson.words?.length) content.words = lesson.words.map(({ word, meaning }) => ({ word, meaning }));

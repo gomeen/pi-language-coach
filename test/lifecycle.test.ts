@@ -98,7 +98,7 @@ function harness(dependencies: Dependencies = {}, mode: ExtensionContext["mode"]
 }
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 function ready(english: string): Generation {
-  return { kind: "ready", english, grammar: { excerpt: english, pattern: "短句", explanation: "保留原意的短句。" } };
+  return { kind: "ready", english, grammar: { excerpt: english, pattern: "短句", explanations: ["保留原意的短句。"] } };
 }
 function deferredGenerator() {
   const calls: Array<{
@@ -409,7 +409,7 @@ test("shortcut saves full current result only on explicit request, command is eq
   assert.ok(h.lines().length > 2, "long English wraps; the full text is still what gets saved");
   await h.save();
   assert.deepEqual(h.saved[0], { original: "只收藏这条原文", english,
-    grammar: { excerpt: english, pattern: "短句", explanation: "保留原意的短句。" } });
+    grammar: { excerpt: english, pattern: "短句", explanations: ["保留原意的短句。"] } });
   assert.ok(h.lines().some(line => /^已收藏/.test(line)), "save notice is shown at the start of the notes");
   assert.equal(work.calls.length, 1, "save never calls the model");
   await h.command("save"); assert.equal(h.saved.length, 2);
@@ -461,7 +461,7 @@ test("default autosave persists only completed visible lessons; duplicate, skip 
   assert.equal(h.saved.length, 0);
   work.calls[0]!.resolve(ready("Complete English.")); await tick();
   assert.deepEqual(h.saved, [{ original: "自动收藏的中文原文", english: "Complete English.", grammar: {
-    excerpt: "Complete English.", pattern: "短句", explanation: "保留原意的短句。",
+    excerpt: "Complete English.", pattern: "短句", explanations: ["保留原意的短句。"],
   } }]);
   h.input("old"); await tick();
   h.input("new"); await tick();

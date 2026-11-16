@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,7 +15,7 @@ async function temporary(run: (directory: string) => Promise<void>) {
 const lesson = {
   original: "先不要实现。\n保留 src/index.ts。",
   english: "Don't implement anything yet.\nKeep src/index.ts unchanged.",
-  grammar: { excerpt: "Don't implement", pattern: "Don't + base verb", explanation: "否定祈使句。", correction: "保持动词原形。" },
+  grammar: { excerpt: "Don't implement", pattern: "Don't + base verb", explanations: ["否定祈使句。"], correction: "保持动词原形。" },
 };
 
 test("loads complete saved records newest first, including English-only lessons", async () => {
@@ -41,9 +41,9 @@ test("loads complete saved records newest first, including English-only lessons"
     assert.equal((html.match(/<article /g) ?? []).length, 2);
     assert.equal((html.match(/<div class="grammar">/g) ?? []).length, 1);
     assert.match(html, /<mark>Don&#39;t implement<\/mark>/);
-    assert.match(html, /<span class="grammar-label">语法<\/span><ol><li class="explanation">否定祈使句。<\/li>/);
+    assert.match(html, /<span class="grammar-label">语法<\/span><div class="points"><ol><li class="explanation">否定祈使句。<\/li><\/ol>/);
     assert.doesNotMatch(html, /Don&#39;t \+ base verb/, "older saved formulas are not displayed");
-    assert.match(html, /<li class="correction">纠正：保持动词原形。<\/li><\/ol>/);
+    assert.match(html, /<\/ol>\s*<p class="correction">纠正：保持动词原形。<\/p><\/div><\/div>/);
     assert.match(html, /<p class="field">英文<\/p>/);
     assert.match(html, /\nKeep src\/index.ts unchanged\./);
     assert.doesNotMatch(html, /示例数据|评分|EXTRA_SECRET/, "two lessons fit one page, so the wheel script is not even present");
@@ -85,7 +85,7 @@ test("all content is escaped, grammar marks only a literal match and HTML cannot
   const single = renderReview({ skipped: 0, lessons: [{
     id: "a".repeat(64), savedAt: "2026-01-01T00:00:00Z", original: attack,
     english: `Before ${attack} after`,
-    grammar: { excerpt: attack, pattern: attack, explanation: attack, correction: attack },
+    grammar: { excerpt: attack, pattern: attack, explanations: [attack], correction: attack },
   }] });
   assert.doesNotMatch(single, /<script/, "a single page has no script at all");
   assert.doesNotMatch(single, /<img|<iframe|<link|<a /i, "user content never becomes active elements");
@@ -107,6 +107,31 @@ test("all content is escaped, grammar marks only a literal match and HTML cannot
   }] });
   assert.doesNotMatch(missingExcerpt, /<mark>/);
   assert.match(missingExcerpt, /Don&#39;t implement anything yet/);
+});
+
+test("grammar points saved before the list existed still render, one numbered row each", async () => {
+  await temporary(async directory => {
+    await mkdir(directory, { recursive: true });
+    // A 0.7.4 record carries a single `explanation` string, not an array.
+    const record = { version: 1, id: "c".repeat(64), savedAt: "2026-01-01T00:00:00.000Z",
+      original: "先不要实现。", english: "Don't implement anything yet.",
+      grammar: { excerpt: "Don't implement", pattern: "否定祈使句", explanation: "否定祈使句用 don't 加动词原形。" } };
+    await writeFile(join(directory, `${record.id}.json`), JSON.stringify(record));
+    const data = await loadLessons(directory);
+    assert.equal(data.skipped, 0, "an old record is not skipped");
+    assert.deepEqual(data.lessons[0]!.grammar?.explanations, ["否定祈使句用 don't 加动词原形。"]);
+    const html = renderReview(data);
+    assert.match(html, /<ol><li class="explanation">否定祈使句用 don&#39;t 加动词原形。<\/li><\/ol>/);
+    // Several points become several list items, with the correction last and unnumbered.
+    const multi = renderReview({ skipped: 0, lessons: [{ ...data.lessons[0]!,
+      grammar: { excerpt: "Don't implement", pattern: "p", explanations: ["第一点。", "第二点。"], correction: "a → b" } }] });
+    assert.match(multi, /<li class="explanation">第一点。<\/li><li class="explanation">第二点。<\/li><\/ol>/);
+    assert.match(multi, /<p class="correction">纠正：a → b<\/p>/, "the correction is not a fourth numbered point");
+    // A record whose points are all unusable is skipped rather than rendered as an empty list.
+    await writeFile(join(directory, `${record.id}.json`), JSON.stringify({ ...record,
+      grammar: { ...record.grammar, explanation: undefined, explanations: [42] } }));
+    assert.equal((await loadLessons(directory)).skipped, 1);
+  });
 });
 
 test("one page shows at a time and the wheel silently accumulates before flipping", () => {

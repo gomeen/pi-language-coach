@@ -24,8 +24,14 @@ function object(value: unknown): value is Record<string, unknown> {
 function text(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
+/** Records saved before the list existed carry a single `explanation`; read both shapes. */
+function points(value: Record<string, unknown>): string[] | undefined {
+  const list = Array.isArray(value.explanations) ? value.explanations.filter(text)
+    : text(value.explanation) ? [value.explanation] : [];
+  return list.length ? list : undefined;
+}
 function grammar(value: unknown): value is Grammar {
-  return object(value) && text(value.excerpt) && text(value.pattern) && text(value.explanation)
+  return object(value) && text(value.excerpt) && text(value.pattern) && points(value) !== undefined
     && (value.correction === undefined || text(value.correction));
 }
 function words(value: unknown): value is Word[] {
@@ -60,8 +66,9 @@ export async function loadLessons(directory: string): Promise<ReviewData> {
         id: value.id, savedAt: value.savedAt, original: stripImageReferences(value.original), english: value.english,
       };
       if (grammar(value.grammar)) {
-        const { excerpt, pattern, explanation, correction } = value.grammar;
-        lesson.grammar = { excerpt, pattern, explanation, ...(correction ? { correction } : {}) };
+        const { excerpt, pattern, correction } = value.grammar;
+        lesson.grammar = { excerpt, pattern, explanations: points(value.grammar as unknown as Record<string, unknown>)!,
+          ...(correction ? { correction } : {}) };
       }
       if (words(value.words) && value.words.length) {
         lesson.words = value.words.map(({ word, meaning }) => ({ word, meaning }));
@@ -150,8 +157,9 @@ export function renderReview(data: ReviewData): string {
 <p class="source" title="${escape(lesson.original)}">${escape(lesson.original)}</p>
 <p class="field">英文</p>
 <p class="english" lang="en" title="${escape(lesson.english)}">${renderEnglish(lesson)}</p>${vocabulary}${grammar ? `
-<div class="grammar"><span class="grammar-label">语法</span><ol><li class="explanation">${escape(grammar.explanation)}</li>${grammar.correction ? `
-<li class="correction">纠正：${escape(grammar.correction)}</li>` : ""}</ol></div>` : ""}
+<div class="grammar"><span class="grammar-label">语法</span><div class="points"><ol>${grammar.explanations
+      .map(point => `<li class="explanation">${escape(point)}</li>`).join("")}</ol>${grammar.correction ? `
+<p class="correction">纠正：${escape(grammar.correction)}</p>` : ""}</div></div>` : ""}
 </article>`;
   };
   const pages = Math.ceil(data.lessons.length / PAGE_SIZE);
@@ -225,6 +233,10 @@ mark{color:inherit;background:none;text-decoration:underline;text-decoration-col
 .words{margin:11px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere;display:flex;gap:11px}
 .words ol,.grammar ol{margin:0;padding-left:1.5em;min-width:0}
 .words li,.grammar li{margin:0 0 2px}
+/* The correction is a fact about this sentence, not a fourth point about how to say it, so it sits
+   outside the numbered list instead of continuing it. */
+.points{min-width:0}
+.correction{margin:4px 0 0}
 .field{margin:0 0 3px;font:11px "Geist",-apple-system,BlinkMacSystemFont,sans-serif;color:var(--muted)}
 .explanation,.correction{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .notice{color:var(--muted)}

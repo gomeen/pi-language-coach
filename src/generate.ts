@@ -3,18 +3,21 @@ import { hasProse, stripPathsAndLinks } from "./input.ts";
 
 export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。
 
-仅返回 JSON，不要任何前言、说明或代码块：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanation":string,"correction"?:string}}。
+仅返回 JSON，不要任何前言、说明或代码块：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanations":[string],"correction"?:string}}。
 
-words 逐个解释 english 里值得学的单词和短语：有难度的都要讲，跳过 it、this、code 这类基础词，按在句中的先后顺序，最多 8 个；word 用 english 里的原样拼写；输入里用中文写的词优先讲，meaning 写简短中文释义加这个说法怎么用的要点，不超过 20 字。
+words 和 grammar 都是可选的，只在这句话确实值得学时才有，没有就给 "words":[] 或整个省略 grammar；不要为了凑数硬写，空着比讲废话好。
 
-grammar 讲这类话英语怎么说：用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思，用 english 里的真实单词举例；不要只写「用于询问……」这类意思，也不用动名词、分词、从句、不定式、谓语、表语、情态动词这类说法，直接写成「后面接 explaining grammar 这样的 -ing 形式」这种看得懂的话；不要写成「动词 + 名词」「be not + 形容词」这类带加号的公式，改成「后面接 clickable 这样的形容词」这种说法；excerpt 从 english（而非输入）原样复制；pattern 写这个句式的简短中文名；explanation 用简洁中文，不超过 100 字。
+words 讲 english 里你可能猜不出意思的词或固定说法，最多 3 个，按句中先后顺序；word 用 english 里的原样拼写，meaning 写简短中文释义加怎么用，不超过 20 字。这些不要讲：fix、show、change、build、yet、whether、continue、bug、code、api、mock、input、log 这类日常词和编程常用词；你输入里已经用英文写过的词；从中文直译出来的长名词短语（如 algorithm configuration、background outside the table）；超过 3 个词的整段话。只讲像 popup、clickable、hardcoded、routing 这种真能学到东西的词。例外：输入里用中文写、english 里换成英文的那个词要讲（输入「接口」、english 是 API 就讲 API），那是你不会写的词。
 
-输入里的英语有错误时优先讲该错误，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
+grammar 讲这类话英语怎么说：用哪个说法开头、后面接什么、把哪个词换掉就能表达别的意思，用 english 里的真实单词举例；不要只写「用于询问……」这类意思，也不用动名词、分词、从句、不定式、谓语、表语、情态动词这类说法，直接写成「后面接 explaining grammar 这样的 -ing 形式」这种看得懂的话；不要写成「动词 + 名词」「be not + 形容词」这类带加号的公式，改成「后面接 clickable 这样的形容词」这种说法；excerpt 必须从 english 逐字复制——输入里的英语有错时也一样，excerpt 用改好后的写法（如输入是 don't、english 是 doesn't，就复制 doesn't 那段），不要复制你输入里那句错的；pattern 写这个句式的简短中文名；explanations 最多 3 条，每条一句独立的话、不超过 50 字，不要重复，不要复述整句。english 只有一两个词（如 Continue.、Hello.）或本身没有可讲的结构时，省略整个 grammar。
+
+输入里的英语有错误时，把该错误放在 explanations 的第一条，并填写 correction，格式为 "before → after"，只写最主要的一处改动涉及的几个词，不写整句；没有错误就省略 correction。`;
 
 export interface Grammar {
   excerpt: string;
   pattern: string;
-  explanation: string;
+  /** One independent point per line, at most MAX_POINTS; the panel prints one numbered row each. */
+  explanations: string[];
   correction?: string;
 }
 
@@ -28,9 +31,12 @@ export type Generation =
   | { kind: "ready"; english: string; grammar: Grammar; words?: Word[] }
   | { kind: "partial"; english: string; words?: Word[] };
 
-// A safety bound, not a target: the prompt asks for every word the user might not know, and a long
-// sentence can honestly need this many. Three was cutting real teaching material off the row.
-const MAX_WORDS = 8;
+// The panel is read at a glance, so both lists are short on purpose: three is what fits without
+// turning the teaching area into a wall of text, and the prompt asks for the hardest picks only.
+export const MAX_WORDS = 3;
+export const MAX_POINTS = 3;
+
+// The prompt asks for the hardest picks only; the cap keeps a chatty model from filling the panel.
 /** Keep only entries whose word really occurs in the English, spelled as there; drop the rest one by one. */
 export function parseWords(value: unknown, english: string): Word[] {
   if (!Array.isArray(value)) return [];
@@ -49,6 +55,32 @@ export function parseWords(value: unknown, english: string): Word[] {
     result.push({ word: found[0], meaning });
   }
   return result;
+}
+
+/**
+ * Grammar points as a list of one-line statements. Accepts the list field, and a single string for
+ * prompts written before the list existed; keeps only items that are Chinese, bounded and distinct.
+ */
+export function parsePoints(value: unknown): string[] {
+  const items = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+  const points: string[] = [];
+  for (const item of items) {
+    if (points.length === MAX_POINTS) break;
+    // The row is Chinese so the user can read it; an English fragment inside a Chinese item
+    // (such as "I'll = I will") is still part of that readable statement.
+    if (typeof item !== "string" || !/\p{Script=Han}/u.test(item)) continue;
+    // A point is one statement; a paragraph pasted into one item is split so the cap still means
+    // something, and the panel keeps one idea per row.
+    for (const piece of item.split(/[\n；;]+/)) {
+      if (points.length === MAX_POINTS) break;
+      const point = piece.trim().replace(/^\d+[.、)\uff09]\s*/, "");
+      if (!point || Array.from(point).length > 100) continue;
+      // The same sentence twice is noise, not a second point.
+      if (points.some(existing => existing.toLowerCase() === point.toLowerCase())) continue;
+      points.push(point);
+    }
+  }
+  return points;
 }
 
 type FailureCode = "network" | "timeout" | "cancelled" | "http" | "oversized" | "invalid" | "incomplete";
@@ -271,22 +303,23 @@ function parsePayload(raw: string, original: string): Generation {
   // omitting the field; treat the two the same instead of discarding a valid grammar point.
   const rawCorrection = object(grammar) ? grammar.correction : undefined;
   const proposed = typeof rawCorrection === "string" && rawCorrection.trim() ? rawCorrection.trim() : undefined;
+  // One point per row, so each must stand on its own: a point that fails a check is dropped alone
+  // instead of taking the readable ones with it. A single-string `explanation` (older prompts and
+  // saved lessons) is read as a one-item list.
+  const points = parsePoints(object(grammar) ? grammar.explanations ?? grammar.explanation : undefined);
   if (!object(grammar) || !nonempty(grammar.excerpt) || !lower.includes(grammar.excerpt.toLowerCase()) ||
-      !nonempty(grammar.pattern) || !nonempty(grammar.explanation) ||
-      !/\p{Script=Han}/u.test(grammar.explanation) ||
+      !nonempty(grammar.pattern) || points.length === 0 ||
       Array.from(grammar.excerpt).length > 300 || Array.from(grammar.pattern).length > 200 ||
-      Array.from(grammar.explanation).length > 500 ||
       (rawCorrection !== undefined && typeof rawCorrection !== "string") ||
       (proposed !== undefined && Array.from(proposed).length > 300)) {
     return { kind: "partial", english, ...words };
   }
   // Showing no rule beats teaching a false one or the formula style the user found unreadable.
-  // Only the explanation is judged: pattern is stored metadata that neither the panel nor the review
-  // page displays, so an unreadable label there must not throw away a readable explanation.
-  if (contradictsEnding(grammar.explanation, english) || inventsPhrase(grammar.explanation, english) ||
-      usesFormula(grammar.explanation, english)) {
-    return { kind: "partial", english, ...words };
-  }
+  // Only the points are judged: pattern is stored metadata that neither the panel nor the review
+  // page displays, so an unreadable label there must not throw away a readable point.
+  const readable = points.filter(point => !contradictsEnding(point, english) &&
+    !inventsPhrase(point, english) && !usesFormula(point, english));
+  if (!readable.length) return { kind: "partial", english, ...words };
   // An optional correction must compare an English span actually in the submitted input with one in the result.
   // Translating Chinese is never a correction; drop unverifiable suggestions rather than teaching an invented edit.
   // Several edits may be listed as "a → b; c → d"; each pair is checked on its own and the rest are kept.
@@ -303,7 +336,7 @@ function parsePayload(raw: string, original: string): Generation {
   return {
     kind: "ready", english,
     grammar: {
-      excerpt: span(english, grammar.excerpt)!, pattern: grammar.pattern, explanation: grammar.explanation,
+      excerpt: span(english, grammar.excerpt)!, pattern: grammar.pattern, explanations: readable,
       ...(correction ? { correction } : {}),
     },
     ...words,
