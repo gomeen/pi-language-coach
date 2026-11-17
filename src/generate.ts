@@ -1,7 +1,7 @@
 import type { ApiProtocol, CoachConfig } from "./config.ts";
 import { hasProse, stripPathsAndLinks } from "./input.ts";
 
-export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正同音错别字；如果有「图片」「文件」「链接」，直接忽略；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。
+export const SYSTEM_PROMPT = `用户用拼音输入法给编程助手发消息，中英混合说明其中用中文写的词不会说。把消息翻译成自然、直接的英语；已是英语就改正其中的错误，大小写和标点不算错误；根据上下文修正拼音输入法的同音错别字，比如改界面时「北京的间距」是「背景的间距」、「北京色」是「背景色」，按意思翻成 background 而不是 Beijing；「图片」「文件」「链接」是占位符，代表被移除的位置，翻译成 image、file、link 这类名词本身，不要省略，也不要丢掉它周围「这个文件」「里面的说明」这类指代；根据英语表达习惯调整语序；保留所有细节、数字、代码和标识符。
 
 仅返回 JSON，不要任何前言、说明或代码块：{"english":string,"words":[{"word":string,"meaning":string}],"grammar":{"excerpt":string,"pattern":string,"explanations":[string],"correction"?:string}}。
 

@@ -56,7 +56,8 @@ const presets: Record<Provider, ProviderPreset> = {
     keyVar: "DEEPSEEK_API_KEY", urlVar: "DEEPSEEK_BASE_URL", modelVar: "DEEPSEEK_MODEL",
   },
   "h-self": {
-    api: "openai-responses", baseUrl: "https://ai.yuchuantest.com/v1", model: "gpt-5.6-luna",
+    // The relay's account group stopped serving gpt-5.6-luna; gpt-6.1-sol is the current model there.
+    api: "openai-responses", baseUrl: "https://ai.yuchuantest.com/v1", model: "gpt-6.1-sol",
     keyVar: "H_SELF_API_KEY", urlVar: "H_SELF_BASE_URL", modelVar: "H_SELF_MODEL",
   },
 };

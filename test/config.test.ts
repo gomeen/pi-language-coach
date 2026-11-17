@@ -97,7 +97,7 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
   assert.equal(relay.kind, "configured");
   if (relay.kind === "configured") {
     assert.equal(relay.config.api, "openai-responses");
-    assert.equal(relay.config.model, "gpt-5.6-luna");
+    assert.equal(relay.config.model, "gpt-6.1-sol");
     assert.equal(relay.config.endpoint, "https://ai.yuchuantest.com/v1/responses");
   }
   // Scoped overrides cover any other relay endpoint, including plain localhost HTTP.
@@ -163,7 +163,7 @@ test("config.json in the agent dir holds everything; env fields still win one by
     if (fromFile.kind === "configured") {
       assert.equal(fromFile.config.api, "openai-responses");
       assert.equal(fromFile.config.apiKey, "file-key");
-      assert.equal(fromFile.config.model, "gpt-5.6-luna", "model stays the provider preset");
+      assert.equal(fromFile.config.model, "gpt-6.1-sol", "model stays the provider preset");
       assert.equal(fromFile.config.thinking, "low");
       assert.equal(fromFile.config.showPractice, false);
       assert.equal(fromFile.config.timeoutMs, 45000);

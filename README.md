@@ -7,7 +7,7 @@ don't implement anything yet; outline the goals and plan first.
 语法 “还没/先不”的 yet 放在句尾：implement anything yet。
 ```
 
-中文、中英混合输入会按英语习惯调整语序、句式及分句，翻译成自然英文，不逐字直译；保留原意、限制和动作先后。提示词按“用拼音输入法给编程助手发指令”的场景理解术语，明显的同音错字（如“北京的间距”实为“背景”）按原意翻译，不认识的缩写原样保留。英文输入可以纠正语法和拼写，并用中文解释相关结构。英文按正常大小写显示（句首、I、专有名词和缩写大写，代码和标识符保持原样）；你随手用小写输入英文不算错误，不会单独纠正大小写。原始提示词仍照常发给主模型，**不会替换成译文**。
+中文、中英混合输入会按英语习惯调整语序、句式及分句，翻译成自然英文，不逐字直译；保留原意、限制和动作先后。提示词按“用拼音输入法给编程助手发指令”的场景理解术语，明显的同音错字按原意翻译（改界面时“北京的间距”“北京色”实为“背景的间距”“背景色”，翻成 background 而不是 Beijing），不认识的缩写原样保留。英文输入可以纠正语法和拼写，并用中文解释相关结构。英文按正常大小写显示（句首、I、专有名词和缩写大写，代码和标识符保持原样）；你随手用小写输入英文不算错误，不会单独纠正大小写。原始提示词仍照常发给主模型，**不会替换成译文**。
 
 学习请求在后台独立调用 MiniMax，不等待它完成才开始主任务。教学规则、英文和语法不加入主对话上下文，也不写入会话记录。
 
@@ -96,7 +96,7 @@ pi
 | --- | --- | --- | --- | --- | --- |
 | `minimax`（默认） | Anthropic Messages | `https://api.minimaxi.com/anthropic` | `MiniMax-M3.1-Flash` | `PI_LANGUAGE_COACH_API_KEY` | `PI_LANGUAGE_COACH_BASE_URL` / `PI_LANGUAGE_COACH_MODEL` |
 | `deepseek` | OpenAI Chat Completions | `https://api.deepseek.com` | `deepseek-flash`（DeepSeek V4.1 Flash） | `PI_LANGUAGE_COACH_DEEPSEEK_API_KEY` | `PI_LANGUAGE_COACH_DEEPSEEK_BASE_URL` / `PI_LANGUAGE_COACH_DEEPSEEK_MODEL` |
-| `h-self` | OpenAI Responses | `https://ai.yuchuantest.com/v1` | `gpt-5.6-luna` | `PI_LANGUAGE_COACH_H_SELF_API_KEY` | `PI_LANGUAGE_COACH_H_SELF_BASE_URL` / `PI_LANGUAGE_COACH_H_SELF_MODEL` |
+| `h-self` | OpenAI Responses | `https://ai.yuchuantest.com/v1` | `gpt-6.1-sol` | `PI_LANGUAGE_COACH_H_SELF_API_KEY` | `PI_LANGUAGE_COACH_H_SELF_BASE_URL` / `PI_LANGUAGE_COACH_H_SELF_MODEL` |
 
 `h-self` 预设按 OpenAI Responses 协议中转站接入，请求固定 `store: false`；指向其他 OpenAI 兼容中转站时改用各自的 `_BASE_URL` 覆盖变量即可。追加的路径由协议自动确定：`/v1/messages`、`/chat/completions`、`/responses`（deepseek 官方地址不带 `/v1`，中转站地址一般带）。默认使用实测速度最快的 **`MiniMax-M3.1-Flash`**（同形状请求延迟约为 M3 的一半，单价也是 M3 一半）：
 

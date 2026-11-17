@@ -536,7 +536,9 @@ test("the prompt keeps the translation rules and the teaching contract", () => {
   assert.ok(SYSTEM_PROMPT.length < 1600, `prompt is ${SYSTEM_PROMPT.length} characters`);
   for (const requirement of [
     /把消息翻译成自然、直接的英语/, /已是英语就改正其中的错误，大小写和标点不算错误/,
-    /根据上下文修正同音错别字/, /「图片」「文件」「链接」.*直接忽略/,
+    /根据上下文修正拼音输入法的同音错别字/, /北京的间距.*是.*背景的间距/,
+    /「图片」「文件」「链接」是占位符/, /翻译成 image、file、link 这类名词本身/,
+    /不要丢掉它周围「这个文件」「里面的说明」这类指代/,
     /根据英语表达习惯调整语序/, /保留所有细节、数字、代码和标识符/,
     /仅返回 JSON/, /word 用 english 里的原样拼写/, /按句中先后顺序/, /最多 3 个/, /不超过 20 字/,
     /每条一句独立的话、不超过 50 字/,
