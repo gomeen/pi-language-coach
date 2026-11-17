@@ -71,8 +71,10 @@ export function registerLanguageCoach(
       return;
     }
     ui.setWidget(WIDGET, (_tui, theme) => {
+      // English keeps one color everywhere: the translation row, and the words and examples quoted
+      // inside the Chinese glosses, so the part you are meant to learn stands out at a glance.
       activeWidget = new CoachWidget(() => state,
-        (row, text) => theme.fg(row === "english" ? "accent" : "muted", text), notice,
+        (_row, text, english) => theme.fg(english ? "accent" : "muted", text), notice,
         controller?.prompt, showOriginal);
       return activeWidget;
     });

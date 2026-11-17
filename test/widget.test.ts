@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { visibleWidth, stripTerminalSequences, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { CoachWidget, editedSpans, markSpans, MARK_END, MARK_START, safeText } from "../src/widget.ts";
+import { CoachWidget, editedSpans, englishRuns, markSpans, MARK_END, MARK_START, safeText } from "../src/widget.ts";
 import type { CoachState } from "../src/controller.ts";
 
 /** Render with the plain underline so assertions do not depend on the terminal running the tests. */
@@ -53,11 +53,13 @@ test("the submitted prompt is shown above the translation, never displacing the 
   const kinds: string[] = [];
   const widget = new CoachWidget(() => state, row => { kinds.push(row); return ""; }, undefined, "I has a bug.");
   const lines = widget.render(200);
-  assert.deepEqual(kinds, ["input", "english", "notes"], "row kinds stay stable even when text is replaced");
+  // Rows are colored run by run, so one row can report itself more than once; the order is what matters.
+  const order = (list: string[]) => list.filter((row, index) => row !== list[index - 1]);
+  assert.deepEqual(order(kinds), ["input", "english", "notes"], "row kinds stay stable even when text is replaced");
   const withWords: CoachState = { ...state, words: [{ word: "bug", meaning: "缺陷" }] };
   const kinds2: string[] = [];
   new CoachWidget(() => withWords, row => { kinds2.push(row); return ""; }, undefined, "I has a bug.").render(200);
-  assert.deepEqual(kinds2, ["input", "english", "words", "notes"], "words sit between the English and the grammar");
+  assert.deepEqual(order(kinds2), ["input", "english", "words", "notes"], "words sit between the English and the grammar");
   const visible = new CoachWidget(() => state, (row, text) => text, undefined, "I has a bug.").render(200);
   assert.deepEqual(visible, ["原文：I has a bug.", "英文：I have a bug.", "语法：1. have 表状态。"]);
   const partial = new CoachWidget(() => ({ kind: "partial", english: "Second." }),
@@ -248,4 +250,57 @@ test("long English and notes wrap completely without splitting CJK or emoji, sho
     // The label shares the narrow rows, so check the English arrives whole and in order.
     assert.equal(narrow.join("").replace(/\s/g, "").slice(-5), "ABCDE", `width=${width}`);
   }
+});
+
+test("English words keep the translation's color inside the word and grammar rows", () => {
+  const state: CoachState = { kind: "ready", english: "Say that's not what I meant.", words: [
+    { word: "meant", meaning: "意思是「想说」" }],
+    grammar: { excerpt: "that's not what I meant", pattern: "否定说法",
+      explanations: ["用 That's not what I 开头，后面接 meant 这样的过去式。"] } };
+  // Brackets instead of colors: the boundaries of every accent run are visible in the plain text.
+  const widget = new CoachWidget(() => state,
+    (_row, text, english) => english ? `[${text}]` : text, undefined, "Say that's not what I mean.");
+  const lines = widget.render(200);
+  // The label and the Chinese gloss stay muted; the word being taught is accented.
+  assert.equal(lines[2], "词：1. [meant] 意思是「想说」");
+  // Every English word quoted inside a grammar point is accented too, one run per word.
+  assert.equal(lines[3], "语法：1. 用 [That's] [not] [what] [I] 开头，后面接 [meant] 这样的过去式。");
+  // The submitted original stays uniformly muted even though it is English: it is what you typed,
+  // not the answer being taught. The English row is one run.
+  assert.equal(lines[0], "原文：Say that's not what I mean.", "no accent inside the original");
+  assert.equal(lines[1], "[英文：Say that's not what I meant.]", "the English row is English throughout");
+  // Chinese-only text is never split into empty runs.
+  assert.deepEqual(englishRuns("纯中文"), [{ text: "纯中文", english: false }]);
+  assert.deepEqual(englishRuns("用 fix 修"), [
+    { text: "用 ", english: false }, { text: "fix", english: true }, { text: " 修", english: false }]);
+});
+
+test("the English split never breaks an escape sequence or the underline pairing", () => {
+  const state: CoachState = { kind: "ready", english: "He doesn't know.", grammar: {
+    excerpt: "He doesn't know", pattern: "第三人称单数",
+    explanations: ["主语 He 用 doesn't。"], correction: "He don't → He doesn't" } };
+  const widget = new CoachWidget(() => state, (_row, text, english) =>
+    (english ? "\x1b[35m" : "\x1b[90m") + text + "\x1b[0m", undefined, "He don't know.");
+  for (const width of [3, 8, 20, 200]) {
+    const lines = widget.render(width);
+    for (const line of lines) {
+      // No run may end mid-escape, and every underline and color run closes inside its own row.
+      assert.doesNotMatch(line, /\x1b\[[0-9;:]*$/, `width=${width}: ${line}`);
+      assert.equal((line.match(/\x1b\[4m/g) ?? []).length, (line.match(/\x1b\[24m/g) ?? []).length, `width=${width}`);
+      // truncateToWidth may append its ellipsis after the reset, so allow extra resets but never a
+      // run left open at the end of the row.
+      assert.ok((line.match(/\x1b\[0m/g) ?? []).length >= (line.match(/\x1b\[35m|\x1b\[90m/g) ?? []).length,
+        `width=${width}: every color run is closed`);
+    }
+    // Narrow columns wrap between words and indent the continuation, so compare without spaces;
+    // the escape pairing above is checked at every width.
+    const joined = stripTerminalSequences(lines.join("")).replace(/\s+/g, "");
+    assert.ok(joined.includes("Hedon'tknow"), `width=${width} keeps the original`);
+    assert.ok(joined.includes("Hedoesn'tknow"), `width=${width} keeps the fix`);
+  }
+  // The marked word survives the split: the wavy mark opens and closes around it, unbroken, and the
+  // English row is still one colored run around it.
+  const marked = new CoachWidget(() => state, (_row, text, english) => english ? `[${text}]` : text).render(200);
+  assert.equal(marked[0], `[英文：${MARK_START}He doesn't${MARK_END} know.]`, "the corrected pair is marked whole");
+  assert.equal(marked[1], "语法：1. 主语 [He] 用 [doesn't]。", "a quoted word keeps its own run");
 });

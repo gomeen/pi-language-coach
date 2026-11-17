@@ -22,7 +22,9 @@ for (const input of inputs) {
   const state = await generate(settings.config, input, AbortSignal.timeout(120_000))
     .catch(error => ({ kind: "error" as const, message: String(error) }));
   console.log(`\n── 输入：${input}`);
-  const lines = new CoachWidget(() => state, (_row, text) => text, undefined, input).render(width);
+  const lines = new CoachWidget(() => state, (_row, text, english) =>
+    // Same mapping as the panel: English is the accent, everything else is muted.
+    (english ? "\x1b[35m" : "\x1b[90m") + text + "\x1b[0m", undefined, input).render(width);
   for (const line of lines.length ? lines : [`（${"message" in state ? state.message : state.kind}）`]) console.log(line);
   if ("grammar" in state) {
     console.log(`\n  语法.correction：${state.grammar.correction ?? "（无，未判定有错）"}`);

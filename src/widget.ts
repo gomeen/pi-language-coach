@@ -3,7 +3,8 @@ import type { CoachState } from "./controller.ts";
 
 /** Semantic widget rows; the colorize callback keys theme colors off these. */
 export type CoachRow = "input" | "english" | "words" | "notes";
-export type Colorize = (row: CoachRow, text: string) => string;
+/** A row plus whether the run is English, so the theme can give English one color everywhere. */
+export type Colorize = (row: CoachRow, text: string, english?: boolean) => string;
 
 /** Sanitize before theming, including OSC/APC, C0/C1, bidi and Unicode line controls. */
 export function safeText(text: string): string {
@@ -31,6 +32,33 @@ export function editedSpans(correction: string | undefined): { before: string[];
     after.push(change[2]!);
   }
   return { before, after };
+}
+
+/** A stretch of a row and whether it is English; the two are colored differently. */
+export interface Run {
+  text: string;
+  english: boolean;
+}
+
+/** An SGR sequence or an English word, matched whole: an escape must never be split between two
+ *  runs, or the color wrapper would land in the middle of it. */
+const TOKEN = /\x1b\[[0-9;:]*[A-Za-z]|[A-Za-z][A-Za-z0-9'’._+-]*/g;
+
+/** Split a row into English and non-English runs, so the English words quoted inside a Chinese
+ *  gloss («后面接 clickable 这样的形容词») can share the translation's color. Escapes stay in the
+ *  run they sit in: the wavy mark around a word survives the split instead of being broken by it. */
+export function englishRuns(text: string): Run[] {
+  const runs: Run[] = [];
+  let at = 0;
+  for (const [token] of text.matchAll(TOKEN)) {
+    const start = text.indexOf(token, at);
+    if (start > at) runs.push({ text: text.slice(at, start), english: false });
+    // An escape is colorless punctuation as far as the split is concerned; a word is English.
+    runs.push({ text: token, english: token.charCodeAt(0) !== 0x1b });
+    at = start + token.length;
+  }
+  if (at < text.length) runs.push({ text: text.slice(at), english: false });
+  return runs;
 }
 
 /** Mark the first whole-word occurrence of each phrase; overlapping runs are merged. */
@@ -105,6 +133,18 @@ function layout({ label, items }: Section): Row[] {
   return items.map((item, index) => ({ text: item, head: `${index === 0 ? label : indent}${index + 1}. ` }));
 }
 
+/** Color one rendered row run by run. The English row is English throughout, so it is colored in
+ *  one piece; the word and grammar rows are split, letting the quoted English inside a Chinese gloss
+ *  keep the same color as the translation. The submitted 原文 stays uniformly muted: it is what you
+ *  typed, a reference for comparison, not the answer. */
+function colorRow(colorize: Colorize, row: CoachRow, text: string): string {
+  if (row === "input") return colorize(row, text);
+  if (row === "english") return colorize(row, text, true);
+  return englishRuns(text)
+    .map(run => (run.english ? colorize(row, run.text, true) : colorize(row, run.text)))
+    .join("");
+}
+
 /** Input, English, then notes; each wraps to as many rows as the terminal width needs. No border or padding. */
 export class CoachWidget implements Component {
   constructor(
@@ -141,8 +181,11 @@ export class CoachWidget implements Component {
         const continuation = " ".repeat(Math.min(hang, columns - 1));
         // Wrap plain text, then color each row, so styling never splits an escape sequence.
         // A glyph wider than a very narrow terminal is clipped for display only.
-        return wrapTextWithAnsi(marked, room).map((part, offset) =>
-          truncateToWidth(this.colorize(row, offset === 0 ? first + part : continuation + part), columns, "…"));
+        // English words keep the translation's color inside the Chinese glosses too, so the
+        // word being explained and the example in a grammar point are as easy to spot as the
+        // English row itself.
+        return wrapTextWithAnsi(marked, room).map((part, offset) => truncateToWidth(
+          colorRow(this.colorize, row, offset === 0 ? first + part : continuation + part), columns, "…"));
       });
     });
   }
