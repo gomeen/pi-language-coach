@@ -120,6 +120,33 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
     "unprefixed names stay the minimax provider so old setups keep working");
 });
 
+test("zai preset uses the coding endpoint, keeps thinking off and accepts a scoped relay", () => {
+  const zai = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "zai", PI_LANGUAGE_COACH_ZAI_API_KEY: "test-only" }));
+  assert.equal(zai.kind, "configured");
+  if (zai.kind === "configured") {
+    assert.deepEqual(zai.config, {
+      api: "openai-completions", apiKey: "test-only", model: "glm-5.3-flash", thinking: "disabled",
+      endpoint: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+      systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
+      autoSave: true, timeoutMs: 30000, maxChars: 200,
+    });
+  }
+  // Thinking is only the preset default: the two higher-precedence sources still win.
+  const thinking = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "zai", PI_LANGUAGE_COACH_ZAI_API_KEY: "test-only",
+    PI_LANGUAGE_COACH_THINKING: "low" }));
+  assert.equal(thinking.kind === "configured" ? thinking.config.thinking : thinking.kind, "low");
+  // A Z.AI international account, or any OpenAI-compatible relay, only needs a base url and model.
+  const relay = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "zai", PI_LANGUAGE_COACH_ZAI_API_KEY: "test-only",
+    PI_LANGUAGE_COACH_ZAI_BASE_URL: "https://api.z.ai/api/coding/paas/v4", PI_LANGUAGE_COACH_ZAI_MODEL: "glm-5.3" }));
+  assert.equal(relay.kind === "configured" ? relay.config.endpoint : relay.kind, "https://api.z.ai/api/coding/paas/v4/chat/completions");
+  assert.equal(relay.kind === "configured" ? relay.config.model : relay.kind, "glm-5.3");
+  // The key is scoped: another provider's key never satisfies zai, and no key means a named disable.
+  assert.equal(loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "zai", PI_LANGUAGE_COACH_API_KEY: "minimax-key" })).kind, "disabled");
+  const missing = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "zai" }));
+  assert.equal(missing.kind, "disabled");
+  if (missing.kind === "disabled") assert.match(missing.reason, /PI_LANGUAGE_COACH_ZAI_API_KEY/);
+});
+
 test("display toggles and a custom teaching prompt resolve with the documented precedence", async () => {
   const off = loadConfig(iso({
     PI_LANGUAGE_COACH_API_KEY: "test-only",

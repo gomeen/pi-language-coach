@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig, type CoachConfig } from "../src/config.ts";
-import { contradictsEnding, generate, GenerationError, inventsPhrase, parseWords, SYSTEM_PROMPT, usesFormula, type Fetch } from "../src/generate.ts";
+import { contradictsEnding, repairJson, generate, GenerationError, inventsPhrase, parseWords, SYSTEM_PROMPT, usesFormula, type Fetch } from "../src/generate.ts";
 
 const AGENT_DIR = mkdtempSync(join(tmpdir(), "coach-gen-"));
 
@@ -329,6 +329,28 @@ test("a narrated preamble before the JSON object is recovered instead of failing
   // Nothing usable stays an error, never a half-parsed guess.
   await assert.rejects(generate(config(), "hello", signal(), async () => response(raw("no object here"))), errorCode("invalid"));
   await assert.rejects(generate(config(), "hello", signal(), async () => response(raw('{"english":"truncated"'))), errorCode("invalid"));
+});
+
+test("one extra closing bracket is repaired; missing ones and quoted brackets are left alone", async () => {
+  // Real GLM-5.3-Flash output: the grammar object and its explanations array both close, then an
+  // extra ] lands before the root object closes, so a plain JSON.parse rejects a usable answer.
+  const extra = JSON.stringify(valid).replace(/\}\}$/, "}]}");
+  assert.equal(repairJson(extra), JSON.stringify(valid));
+  // The other real shape: the explanations array never closes, so three } arrive in a row.
+  const missing = JSON.stringify(valid).replace('"]}', '"}}');
+  assert.equal(repairJson(missing), JSON.stringify(valid), "a missing ] is closed where the } arrives");
+  assert.equal(repairJson(JSON.stringify(valid) + "}"), JSON.stringify(valid), "a trailing stray } goes too");
+  // Truncation is not repaired: adding the missing closer would fake a complete answer.
+  assert.equal(repairJson('{"english":"truncated"'), undefined);
+  assert.equal(repairJson(JSON.stringify(valid)), undefined, "valid JSON is never rewritten");
+  // Brackets inside strings are content, not structure.
+  const quoted = { english: 'close it ] then }', grammar: { excerpt: "close it", pattern: "p", explanations: ["用 ] 和 } 举例。"] } };
+  assert.equal(repairJson(JSON.stringify(quoted)), undefined);
+  assert.equal(repairJson('{"english":"a ] b"' + "}]}"), '{"english":"a ] b"}');
+  // Through the real pipeline: the repaired answer is shown, not discarded as invalid.
+  const raw = JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: extra }] });
+  assert.deepEqual(await generate(config(), "hello", signal(), async () => response(raw)), {
+    kind: "ready", english: valid.english, grammar: valid.grammar });
 });
 
 test("bad envelope/JSON/English rejected; unfinished outputs never shown as full translations", async () => {

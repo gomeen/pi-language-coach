@@ -263,6 +263,41 @@ function span(text: string, phrase: string): string | undefined {
   return at === -1 ? undefined : text.slice(at, at + phrase.length);
 }
 
+/** GLM and friends get brackets wrong two ways: one closer too many ("…]}]}"), or a list closer left
+ *  out so an object closer arrives first. A mismatched closer is dropped when nothing in the open stack
+ *  matches it, and otherwise taken as the point where the inner containers end, so the containers are
+ *  closed in order. Nothing is appended at the end: a truncated reply must keep failing instead of
+ *  looking complete. Undefined when nothing changed, so a plain parse failure is never rewritten. */
+export function repairJson(text: string): string | undefined {
+  const open: string[] = [];
+  let output = "", quoted = false, escaped = false, changed = false;
+  for (const character of text) {
+    if (quoted) {
+      output += character;
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') { quoted = true; output += character; continue; }
+    if (character === "{") { open.push("}"); output += character; continue; }
+    if (character === "[") { open.push("]"); output += character; continue; }
+    if (character === "}" || character === "]") {
+      if (open.at(-1) === character) { open.pop(); output += character; continue; }
+      changed = true;
+      // An earlier container that wants this closer: the inner ones were simply never closed.
+      if (open.includes(character)) {
+        while (open.length && open.at(-1) !== character) output += open.pop();
+        open.pop();
+        output += character;
+      }
+      continue;
+    }
+    output += character;
+  }
+  return changed ? output : undefined;
+}
+
 function parsePayload(raw: string, original: string): Generation {
   let text = raw;
   const fence = /^\`\`\`(?:json)?\s*\n?([\s\S]*?)\n?\`\`\`$/i.exec(text);
@@ -270,7 +305,14 @@ function parsePayload(raw: string, original: string): Generation {
   // The model occasionally narrates before the answer ("I'll inspect the working tree…") and only then
   // emits the object. Recover the last balanced top-level JSON object instead of discarding a valid answer.
   const parsed = (value: string): unknown => { try { return JSON.parse(value); } catch { return undefined; } };
-  let result = parsed(text);
+  // A stray bracket is repaired only after the plain parse fails, and never by adding anything.
+  const attempt = (value: string): unknown => {
+    const direct = parsed(value);
+    if (direct !== undefined) return direct;
+    const repaired = repairJson(value);
+    return repaired === undefined ? undefined : parsed(repaired);
+  };
+  let result = attempt(text);
   if (result === undefined) {
     const candidates: string[] = [];
     let depth = 0, start = -1, quoted = false, escaped = false;
@@ -287,7 +329,7 @@ function parsePayload(raw: string, original: string): Generation {
       else if (character === "}" && depth > 0 && --depth === 0) candidates.push(text.slice(start, index + 1));
     }
     for (const candidate of candidates.reverse()) {
-      result = parsed(candidate);
+      result = attempt(candidate);
       if (result !== undefined) break;
     }
   }

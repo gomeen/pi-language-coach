@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { SYSTEM_PROMPT } from "./generate.ts";
 
-export type Provider = "minimax" | "deepseek" | "h-self";
+export type Provider = "minimax" | "deepseek" | "h-self" | "zai";
 /** Wire protocol of the configured provider; one coach, three envelope shapes. */
 export type ApiProtocol = "anthropic-messages" | "openai-completions" | "openai-responses";
 type Thinking = "adaptive" | "disabled" | "low" | "medium" | "high";
@@ -38,7 +38,7 @@ export type ConfigResult =
 
 export type Environment = Readonly<Record<string, string | undefined>>;
 const prefix = "PI_LANGUAGE_COACH_";
-const providers: Provider[] = ["minimax", "deepseek", "h-self"];
+const providers: Provider[] = ["minimax", "deepseek", "h-self", "zai"];
 const thinkingValues: Thinking[] = ["adaptive", "disabled", "low", "medium", "high"];
 
 interface ProviderPreset {
@@ -50,6 +50,8 @@ interface ProviderPreset {
   readonly keyVar: string;
   readonly urlVar: string;
   readonly modelVar: string;
+  /** Provider default when neither the environment nor config.json picks a thinking level. */
+  readonly thinking?: Thinking;
 }
 
 /** Built-in routes. Any other OpenAI-compatible relay works through a scoped base-url override. */
@@ -66,6 +68,12 @@ const presets: Record<Provider, ProviderPreset> = {
     // The relay's account group stopped serving gpt-5.6-luna; gpt-6.1-sol is the current model there.
     api: "openai-responses", baseUrl: "https://ai.yuchuantest.com/v1", model: "gpt-6.1-sol",
     keyVar: "H_SELF_API_KEY", urlVar: "H_SELF_BASE_URL", modelVar: "H_SELF_MODEL",
+  },
+  zai: {
+    // Z.AI's coding plan endpoint is OpenAI-compatible. Flash keeps a coached sentence near 3s;
+    // its thinking is verbose (22–32s measured), so the preset turns thinking off by default.
+    api: "openai-completions", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.3-flash",
+    keyVar: "ZAI_API_KEY", urlVar: "ZAI_BASE_URL", modelVar: "ZAI_MODEL", thinking: "disabled",
   },
 };
 
@@ -202,7 +210,7 @@ export function loadConfig(env: Environment): ConfigResult {
     if (!model.trim() || /[\p{Cc}\p{Cf}]/u.test(model)) throw new Error();
     // "adaptive" leaves the depth to the model; low/medium/high add a provider effort cap where the
     // protocol has one; "disabled" asks for the provider's off state.
-    const rawThinking = env[prefix + "THINKING"] ?? file?.thinking ?? "medium";
+    const rawThinking = env[prefix + "THINKING"] ?? file?.thinking ?? preset.thinking ?? "medium";
     if (!thinkingValues.includes(rawThinking as Thinking)) throw new Error();
     const thinking = rawThinking as Thinking;
     const rawUrl = env[prefix + preset.urlVar] ?? fileEntry?.baseUrl ?? preset.baseUrl;
