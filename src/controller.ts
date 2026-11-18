@@ -1,4 +1,4 @@
-import type { CoachConfig, ConfigResult } from "./config.ts";
+import { DEFAULT_MAX_CHARS, type CoachConfig, type ConfigResult } from "./config.ts";
 import { generate, GenerationError, type Generation } from "./generate.ts";
 import type { Lesson } from "./storage.ts";
 import { hasProse, stripImageReferences, stripPathsAndLinks } from "./input.ts";
@@ -13,7 +13,15 @@ export type CoachState =
 
 export type Generator = (config: CoachConfig, prompt: string, signal: AbortSignal) => Promise<Generation>;
 
-export function skipReason(text: string, images: boolean): string | undefined {
+/** Characters, not bytes or columns: the cap is about how much text the model is asked to coach. */
+export function charCount(text: string): number {
+  let count = 0;
+  // Iterating a string yields code points, so one emoji counts once instead of twice (UTF-16 units).
+  for (const _ of text) count++;
+  return count;
+}
+
+export function skipReason(text: string, images: boolean, maxChars = DEFAULT_MAX_CHARS): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return images ? "纯图片输入" : "空输入";
   if (/^\/[^\s/]+(?=\s|$)/.test(trimmed)) return "斜杠命令";
@@ -21,6 +29,9 @@ export function skipReason(text: string, images: boolean): string | undefined {
   if (/^(`{3,}|~{3,})[^\n]*\n[\s\S]*\n\1\s*$/.test(trimmed)) return "纯代码块";
   const cleaned = stripPathsAndLinks(text);
   if (!hasProse(cleaned) && cleaned !== text) return "纯路径、链接或图片引用";
+  // Measured after location filtering, so pasting a screenshot path does not count against the budget;
+  // a long paste is skipped unread instead of filling the panel the agent is working in.
+  if (charCount(cleaned.trim()) > maxChars) return `超长输入（超过 ${maxChars} 字符）`;
   return undefined;
 }
 
@@ -71,7 +82,7 @@ export class CoachController {
       this.update({ kind: "disabled", reason: this.settings.reason, hidden: false });
       return;
     }
-    const reason = skipReason(text, images);
+    const reason = skipReason(text, images, this.settings.config.maxChars);
     if (reason) {
       this.update({ kind: "skipped", reason });
       return;

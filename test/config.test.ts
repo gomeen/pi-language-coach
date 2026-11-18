@@ -28,7 +28,7 @@ test("dedicated namespace only, exact defaults and no authentication fallback", 
     apiKey: "test-only", model: "MiniMax-M3.1-Flash", thinking: "medium",
     endpoint: "https://api.minimaxi.com/anthropic/v1/messages",
     systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
-    autoSave: true, timeoutMs: 30000,
+    autoSave: true, timeoutMs: 30000, maxChars: 200,
   });
   assert.ok(read.every((key) => key.startsWith("PI_LANGUAGE_COACH_") || key === "PI_CODING_AGENT_DIR"));
   assert.equal(loadConfig(iso({ ANTHROPIC_API_KEY: "must-not-use", MINIMAX_API_KEY: "must-not-use" })).kind, "disabled");
@@ -42,6 +42,7 @@ test("valid overrides and localhost HTTP; no silent model fallback", () => {
     PI_LANGUAGE_COACH_BASE_URL: "http://[::1]:5555/anthropic/",
     PI_LANGUAGE_COACH_AUTO_SAVE: "false",
     PI_LANGUAGE_COACH_TIMEOUT_MS: "50",
+    PI_LANGUAGE_COACH_MAX_CHARS: "400",
   }));
   assert.equal(result.kind, "configured");
   if (result.kind === "configured") {
@@ -49,6 +50,7 @@ test("valid overrides and localhost HTTP; no silent model fallback", () => {
     assert.equal(result.config.thinking, "disabled");
     assert.equal(result.config.endpoint, "http://[::1]:5555/anthropic/v1/messages");
     assert.equal(result.config.timeoutMs, 50);
+    assert.equal(result.config.maxChars, 400);
     assert.equal(result.config.autoSave, false);
   }
   for (const thinking of ["adaptive", "low", "medium", "high"] as const) {
@@ -69,6 +71,7 @@ test("invalid environment is disabled without echoing values", () => {
     ...["yes", "on", "", "TRUE"].map(SHOW_PRACTICE => ({ SHOW_PRACTICE })),
     { PROMPT: "   \n  " }, { PROMPT_FILE: "/nonexistent/coach-prompt.md" },
     { TIMEOUT_MS: "NaN" },
+    ...["0", "-1", "200.5", "many", "100001", " "].map(MAX_CHARS => ({ MAX_CHARS })),
     ...["openai", "h self", "", "MINIMAX"].map(PROVIDER => ({ PROVIDER })),
     { PROVIDER: "deepseek", DEEPSEEK_API_KEY: "test-only-secret", DEEPSEEK_BASE_URL: "https://evil.example.com?secret=value" },
     { PROVIDER: "h-self", H_SELF_API_KEY: "test-only-secret", H_SELF_MODEL: "bad\x1bmodel" },
@@ -90,7 +93,7 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
       api: "openai-completions", apiKey: "test-only", model: "deepseek-flash", thinking: "medium",
       endpoint: "https://api.deepseek.com/chat/completions",
       systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
-      autoSave: true, timeoutMs: 30000,
+      autoSave: true, timeoutMs: 30000, maxChars: 200,
     });
   }
   const relay = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "h-self", PI_LANGUAGE_COACH_H_SELF_API_KEY: "test-only" }));
@@ -153,7 +156,7 @@ test("config.json in the agent dir holds everything; env fields still win one by
     const coachDir = join(root, "language-coach");
     await mkdir(coachDir, { recursive: true });
     await writeFile(join(coachDir, "config.json"), JSON.stringify({
-      provider: "h-self", thinking: "low", showPractice: false, timeoutMs: 45000,
+      provider: "h-self", thinking: "low", showPractice: false, timeoutMs: 45000, maxChars: 350,
       promptFile: "prompt.md",
       providers: { "h-self": { apiKey: "file-key" } },
     }));
@@ -167,6 +170,7 @@ test("config.json in the agent dir holds everything; env fields still win one by
       assert.equal(fromFile.config.thinking, "low");
       assert.equal(fromFile.config.showPractice, false);
       assert.equal(fromFile.config.timeoutMs, 45000);
+      assert.equal(fromFile.config.maxChars, 350, "config.json can widen the cap past the 200 default");
       assert.equal(fromFile.config.systemPrompt, "文件里的提示词", "promptFile resolves relative to the coach dir");
       assert.equal(fromFile.config.endpoint, "https://ai.yuchuantest.com/v1/responses");
     }
@@ -187,6 +191,12 @@ test("config.json in the agent dir holds everything; env fields still win one by
     // Wrong field types are rejected the same way.
     await writeFile(join(coachDir, "config.json"), JSON.stringify({ provider: "h-self", providers: { "h-self": { apiKey: 5 } } }));
     assert.equal(loadConfig({ PI_CODING_AGENT_DIR: root }).kind, "disabled");
+    // Out-of-range or non-integer caps are a named disable too, never a silent fallback.
+    for (const maxChars of [0, 100001, 12.5, "350"]) {
+      await writeFile(join(coachDir, "config.json"), JSON.stringify({ provider: "h-self", maxChars,
+        providers: { "h-self": { apiKey: "file-key" } } }));
+      assert.equal(loadConfig({ PI_CODING_AGENT_DIR: root }).kind, "disabled", JSON.stringify({ maxChars }));
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

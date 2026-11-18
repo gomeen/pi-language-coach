@@ -23,7 +23,14 @@ export interface CoachConfig {
   readonly showPractice: boolean;
   readonly autoSave: boolean;
   readonly timeoutMs: number;
+  /** Longest text worth coaching, in characters of prose; anything longer is skipped unread. */
+  readonly maxChars: number;
 }
+
+/** Default ceiling on coached text: a pasted spec would otherwise fill the panel over agent output. */
+export const DEFAULT_MAX_CHARS = 200;
+/** Highest cap worth accepting; a larger value would let any paste through again. */
+export const MAX_CHARS_LIMIT = 100000;
 
 export type ConfigResult =
   | { kind: "configured"; config: CoachConfig }
@@ -76,6 +83,7 @@ export interface FileConfig {
   showPractice?: boolean;
   autoSave?: boolean;
   timeoutMs?: number;
+  maxChars?: number;
   prompt?: string;
   /** Path relative to the language-coach directory, or absolute. */
   promptFile?: string;
@@ -96,6 +104,7 @@ function parseFileConfig(raw: string): FileConfig {
     if (file[flag] !== undefined && typeof file[flag] !== "boolean") throw new Error();
   }
   if (file.timeoutMs !== undefined && (typeof file.timeoutMs !== "number" || !Number.isSafeInteger(file.timeoutMs))) throw new Error();
+  if (file.maxChars !== undefined && (typeof file.maxChars !== "number" || !Number.isSafeInteger(file.maxChars))) throw new Error();
   for (const text of ["prompt", "promptFile"] as const) {
     if (file[text] !== undefined && typeof file[text] !== "string") throw new Error();
   }
@@ -206,6 +215,12 @@ export function loadConfig(env: Environment): ConfigResult {
     const fallbackTimeout = fileTimeout === undefined ? 30000
       : Number.isInteger(fileTimeout) && fileTimeout >= 1 && fileTimeout <= 300000 ? fileTimeout : -1;
     if (fallbackTimeout === -1) throw new Error();
+    // A pasted spec or document would push the panel over the agent's own output; the default keeps
+    // coaching to a few sentences while config.json can widen or tighten it.
+    const fileMaxChars = file?.maxChars;
+    const fallbackMaxChars = fileMaxChars === undefined ? DEFAULT_MAX_CHARS
+      : Number.isInteger(fileMaxChars) && fileMaxChars >= 1 && fileMaxChars <= MAX_CHARS_LIMIT ? fileMaxChars : -1;
+    if (fallbackMaxChars === -1) throw new Error();
     return {
       kind: "configured",
       config: Object.freeze({
@@ -215,6 +230,7 @@ export function loadConfig(env: Environment): ConfigResult {
         showPractice: boolean(env, "SHOW_PRACTICE", file?.showPractice ?? true),
         autoSave: boolean(env, "AUTO_SAVE", file?.autoSave ?? true),
         timeoutMs: integer(env, "TIMEOUT_MS", fallbackTimeout, 300000),
+        maxChars: integer(env, "MAX_CHARS", fallbackMaxChars, MAX_CHARS_LIMIT),
       }),
     };
   } catch {

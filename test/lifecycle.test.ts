@@ -211,28 +211,48 @@ test("latest request wins even when transport ignores abort; skipped input cance
   assert.doesNotMatch(h.lines().join(""), /SECRET/);
 });
 
-test("skips stay hidden, long Unicode inputs are sent intact, English is eligible", async () => {
+test("skips stay hidden, overlong pastes are skipped, English is eligible", async () => {
   const work = deferredGenerator();
   const h = harness({ generate: work.generate, environment: () => ({
     PI_CODING_AGENT_DIR: AGENT_DIR, PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_AUTO_SAVE: "false",
   }) });
+  // The real case: a pasted requirements paragraph (~370 characters) that used to fill the panel
+  // with 原文 and a translation while the agent was still writing.
+  const spec = "给前端的修改口径是：1. 继续使用原上传页面，选择 ZIP 后切换为 SDK 包表单，不再增加独立页面。"
+    + "2. 上传成功后调用原新增接口，携带新增的 artifactType=SDK_ZIP 和上传凭据。3. ZIP 列表按 packageStatus 展示状态，"
+    + "按 allowedActions 控制按钮。4. ZIP 的“发起测试”直接调用包自测接口，不再打开旧镜像的离线/在线测试配置弹窗。"
+    + "5. 测试受理后轮询详情，分别显示“测试中、测试通过、测试失败”；超时先查询状态，避免重复发起。"
+    + "6. 原管理员审核页面按条目类型分流。ZIP 的版本名称只读，审核调用包的通过/驳回接口。"
+    + "7. 上传大小提示读取后端配置。当前 ZIP 源码默认上限为 2 GiB，页面不能统一写成 15GB。"
+    + "这个页面做如上修改，先分析需求，有不明白的先问";
+  assert.ok([...spec].length > 300, "the sample has to be well past the cap");
   for (const [text, extras] of [
     ["", {}], [" \n ", {}], ["/command", {}], ["  !echo hi", {}],
     ["```ts\na()\n```", {}], ["~~~\na()\n~~~", {}],
     ["", { images: [{ type: "image", data: "not-real", mimeType: "image/png" }] }],
+    [spec, {}], ["超长".repeat(120), {}], ["a".repeat(25000), {}],
   ] satisfies Array<[string, Partial<InputEvent>]>) {
     h.input(text, extras);
     assert.deepEqual(h.lines(), []);
     assert.equal(h.mounted, false);
+    // Each skip has to settle before the next input, or a later submit would cancel it and the
+    // “never reaches the model” assertion below would pass for the wrong reason.
+    await tick();
+    assert.equal(work.calls.length, 0, `skipped input never reaches the model: ${JSON.stringify(text.slice(0, 20))}`);
   }
-  await tick();
-  assert.equal(work.calls.length, 0);
-  h.input("😀".repeat(10)); await tick();
-  assert.equal(work.calls[0]!.prompt, "😀".repeat(10));
-  h.input("a".repeat(25000)); await tick();
-  assert.equal(work.calls[1]!.prompt, "a".repeat(25000));
+  // The cap counts characters, not UTF-16 units: 150 emoji are 150 characters, still a sentence's worth.
+  h.input("😀".repeat(150)); await tick();
+  assert.equal(work.calls[0]!.prompt, "😀".repeat(150));
+  // Exactly at the cap is coached; one character past it is not.
+  h.input("a".repeat(200)); await tick();
+  assert.equal(work.calls[1]!.prompt, "a".repeat(200));
+  h.input("a".repeat(201)); await tick();
+  assert.equal(work.calls.length, 2);
+  // A pasted image location does not spend the budget: it never reaches the model in the first place.
+  h.input(`/var/folders/2f/7ck/T/orca-paste-1794.png ${"改".repeat(190)}`); await tick();
+  assert.equal(work.calls.length, 3, "the location is stripped before the length is counted");
   h.input("I has bug"); await tick();
-  assert.equal(work.calls.length, 3);
+  assert.equal(work.calls.length, 4);
   h.emit({ type: "session_shutdown" });
 });
 
