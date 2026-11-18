@@ -4,7 +4,7 @@ import { loadConfig, type Environment, type ConfigResult } from "./config.ts";
 import { CoachController, type CoachState, type Generator } from "./controller.ts";
 import { CoachWidget, hasResult } from "./widget.ts";
 import { CoachEditor, enhanceWithPractice, type PracticeHost } from "./practice.ts";
-import { saveLesson, storageDirectory, type Lesson, type SaveResult } from "./storage.ts";
+import { saveLesson, storageDirectory, type Lesson, type SaveOptions, type SaveResult } from "./storage.ts";
 import { openReview, ReviewOpenError } from "./review.ts";
 
 const WIDGET = "language-coach";
@@ -56,6 +56,11 @@ export function registerLanguageCoach(
   let editor: (CustomEditor & PracticeHost) | undefined;
   let editorFactory: Parameters<Context["ui"]["setEditorComponent"]>[0];
 
+  /** Bundle粒度来自 config.json / 环境变量；配置不可用时退回默认的「每周一个文件」。 */
+  function saveOptions(): SaveOptions {
+    return settings?.kind === "configured" ? { groupBy: settings.config.groupBy } : {};
+  }
+
   function cancelNotice(): void {
     clearTimeout(noticeTimer);
     noticeTimer = undefined;
@@ -82,7 +87,7 @@ export function registerLanguageCoach(
 
   async function saveAutomatically(lesson: Lesson, owner: CoachController, version: number): Promise<void> {
     try {
-      await (dependencies.save ?? (entry => saveLesson(entry, storageDirectory())))(lesson);
+      await (dependencies.save ?? (entry => saveLesson(entry, storageDirectory(), saveOptions())))(lesson);
     } catch {
       // A failed background write must not leak file paths or break the main input path.
       if (controller === owner && revision === version && ui) {
@@ -99,7 +104,7 @@ export function registerLanguageCoach(
     const version = revision;
     let notice: string;
     try {
-      const result = await (dependencies.save ?? (entry => saveLesson(entry, storageDirectory())))(lesson);
+      const result = await (dependencies.save ?? (entry => saveLesson(entry, storageDirectory(), saveOptions())))(lesson);
       notice = result === "saved" ? "已收藏" : "已收藏过";
     } catch {
       notice = "收藏失败，请检查存储目录与权限";

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { SYSTEM_PROMPT } from "./generate.ts";
+import { DEFAULT_GROUP_BY, GROUP_BY_VALUES, type GroupBy } from "./storage.ts";
 
 export type Provider = "minimax" | "deepseek" | "h-self" | "zai";
 /** Wire protocol of the configured provider; one coach, three envelope shapes. */
@@ -22,6 +23,8 @@ export interface CoachConfig {
   /** Open the practice typing row automatically whenever a fresh result lands. */
   readonly showPractice: boolean;
   readonly autoSave: boolean;
+  /** One saved file per local day or per ISO week. */
+  readonly groupBy: GroupBy;
   readonly timeoutMs: number;
   /** Longest text worth coaching, in characters of prose; anything longer is skipped unread. */
   readonly maxChars: number;
@@ -90,6 +93,7 @@ export interface FileConfig {
   showOriginal?: boolean;
   showPractice?: boolean;
   autoSave?: boolean;
+  groupBy?: GroupBy;
   timeoutMs?: number;
   maxChars?: number;
   prompt?: string;
@@ -108,6 +112,7 @@ function parseFileConfig(raw: string): FileConfig {
   const file = value as FileConfig;
   if (file.provider !== undefined && !providers.includes(file.provider)) throw new Error();
   if (file.thinking !== undefined && !thinkingValues.includes(file.thinking)) throw new Error();
+  if (file.groupBy !== undefined && !GROUP_BY_VALUES.includes(file.groupBy)) throw new Error();
   for (const flag of ["showOriginal", "showPractice", "autoSave"] as const) {
     if (file[flag] !== undefined && typeof file[flag] !== "boolean") throw new Error();
   }
@@ -156,6 +161,14 @@ function boolean(env: Environment, name: string, fallback: boolean): boolean {
   if (value === "1" || value === "true") return true;
   if (value === "0" || value === "false") return false;
   throw new Error();
+}
+
+/** A closed set of literals (or undefined); anything else makes the whole config invalid. */
+function choice<T extends string>(env: Environment, name: string, values: readonly T[], fallback: T): T {
+  const value = env[prefix + name];
+  if (value === undefined) return fallback;
+  if (!values.includes(value as T)) throw new Error();
+  return value as T;
 }
 
 function integer(env: Environment, name: string, fallback: number, maximum: number): number {
@@ -237,6 +250,7 @@ export function loadConfig(env: Environment): ConfigResult {
         showOriginal: boolean(env, "SHOW_ORIGINAL", file?.showOriginal ?? true),
         showPractice: boolean(env, "SHOW_PRACTICE", file?.showPractice ?? true),
         autoSave: boolean(env, "AUTO_SAVE", file?.autoSave ?? true),
+        groupBy: choice(env, "GROUP_BY", GROUP_BY_VALUES, file?.groupBy ?? DEFAULT_GROUP_BY),
         timeoutMs: integer(env, "TIMEOUT_MS", fallbackTimeout, 300000),
         maxChars: integer(env, "MAX_CHARS", fallbackMaxChars, MAX_CHARS_LIMIT),
       }),

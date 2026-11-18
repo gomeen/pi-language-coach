@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { Grammar, Word } from "./generate.ts";
 import { stripImageReferences } from "./input.ts";
-import type { Lesson } from "./storage.ts";
+import { LEGACY_FILE, PERIOD_FILE, type Lesson } from "./storage.ts";
 
 interface SavedLesson extends Lesson {
   id: string;
@@ -38,7 +38,31 @@ function words(value: unknown): value is Word[] {
   return Array.isArray(value) && value.every(item => object(item) && text(item.word) && text(item.meaning));
 }
 
-/** Only saved record files are read; snapshots, temporary files and symlinks are ignored. */
+/** A stored lesson: same shape whether it came from a 0.9 single-record file or a 0.10 bundle. */
+function savedLesson(value: unknown): SavedLesson | undefined {
+  if (!object(value) || value.version !== 1 || !text(value.id) || !text(value.savedAt)
+    || !Number.isFinite(Date.parse(value.savedAt))
+    || !text(value.original) || !text(value.english)
+    || (value.grammar !== undefined && !grammar(value.grammar))
+    || (value.words !== undefined && !words(value.words))) return undefined;
+  // Whitelist fields: do not propagate unknown metadata into the HTML. Records saved before image
+  // locations were dropped still render them as 「图片」, so no local path reaches the page.
+  const lesson: SavedLesson = {
+    id: value.id, savedAt: value.savedAt, original: stripImageReferences(value.original), english: value.english,
+  };
+  if (grammar(value.grammar)) {
+    const { excerpt, pattern, correction } = value.grammar;
+    lesson.grammar = { excerpt, pattern, explanations: points(value.grammar as unknown as Record<string, unknown>)!,
+      ...(correction ? { correction } : {}) };
+  }
+  if (words(value.words) && value.words.length) {
+    lesson.words = value.words.map(({ word, meaning }) => ({ word, meaning }));
+  }
+  return lesson;
+}
+
+/** Reads day/week bundles and, forever, the 0.9 one-record-per-file layout. Snapshots, temporary
+ *  files, quarantine copies and symlinks are ignored. A bad lesson is counted, never rewritten. */
 export async function loadLessons(directory: string): Promise<ReviewData> {
   let entries;
   try {
@@ -49,33 +73,31 @@ export async function loadLessons(directory: string): Promise<ReviewData> {
   }
   const result: ReviewData = { lessons: [], skipped: 0 };
   for (const entry of entries) {
-    if (!entry.isFile() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) continue;
+    if (!entry.isFile()) continue;
+    const single = LEGACY_FILE.test(entry.name);
+    if (!single && !PERIOD_FILE.test(entry.name)) continue;
+    let value: unknown;
     try {
-      const value: unknown = JSON.parse(await readFile(join(directory, entry.name), "utf8"));
-      if (!object(value) || value.version !== 1 || !text(value.id) || value.id !== entry.name.slice(0, -5)
-        || !text(value.savedAt) || !Number.isFinite(Date.parse(value.savedAt))
-        || !text(value.original) || !text(value.english)
-        || (value.grammar !== undefined && !grammar(value.grammar))
-        || (value.words !== undefined && !words(value.words))) {
-        result.skipped++;
-        continue;
-      }
-      // Whitelist fields: do not propagate unknown metadata into the HTML. Records saved before image
-      // locations were dropped still render them as 「图片」, so no local path reaches the page.
-      const lesson: SavedLesson = {
-        id: value.id, savedAt: value.savedAt, original: stripImageReferences(value.original), english: value.english,
-      };
-      if (grammar(value.grammar)) {
-        const { excerpt, pattern, correction } = value.grammar;
-        lesson.grammar = { excerpt, pattern, explanations: points(value.grammar as unknown as Record<string, unknown>)!,
-          ...(correction ? { correction } : {}) };
-      }
-      if (words(value.words) && value.words.length) {
-        lesson.words = value.words.map(({ word, meaning }) => ({ word, meaning }));
-      }
-      result.lessons.push(lesson);
+      value = JSON.parse(await readFile(join(directory, entry.name), "utf8"));
     } catch {
       result.skipped++;
+      continue;
+    }
+    if (single) {
+      const lesson = savedLesson(value);
+      // An old file is trusted only when its contents still match the content id in its name.
+      if (lesson && lesson.id === entry.name.slice(0, -5)) result.lessons.push(lesson);
+      else result.skipped++;
+      continue;
+    }
+    if (!object(value) || value.version !== 2 || !Array.isArray(value.lessons)) {
+      result.skipped++;
+      continue;
+    }
+    for (const item of value.lessons) {
+      const lesson = savedLesson(item);
+      if (lesson) result.lessons.push(lesson);
+      else result.skipped++;
     }
   }
   result.lessons.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt) || a.id.localeCompare(b.id));

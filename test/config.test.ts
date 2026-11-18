@@ -28,7 +28,7 @@ test("dedicated namespace only, exact defaults and no authentication fallback", 
     apiKey: "test-only", model: "MiniMax-M3.1-Flash", thinking: "medium",
     endpoint: "https://api.minimaxi.com/anthropic/v1/messages",
     systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
-    autoSave: true, timeoutMs: 30000, maxChars: 200,
+    autoSave: true, groupBy: "week", timeoutMs: 30000, maxChars: 200,
   });
   assert.ok(read.every((key) => key.startsWith("PI_LANGUAGE_COACH_") || key === "PI_CODING_AGENT_DIR"));
   assert.equal(loadConfig(iso({ ANTHROPIC_API_KEY: "must-not-use", MINIMAX_API_KEY: "must-not-use" })).kind, "disabled");
@@ -41,6 +41,7 @@ test("valid overrides and localhost HTTP; no silent model fallback", () => {
     PI_LANGUAGE_COACH_THINKING: "disabled",
     PI_LANGUAGE_COACH_BASE_URL: "http://[::1]:5555/anthropic/",
     PI_LANGUAGE_COACH_AUTO_SAVE: "false",
+    PI_LANGUAGE_COACH_GROUP_BY: "day",
     PI_LANGUAGE_COACH_TIMEOUT_MS: "50",
     PI_LANGUAGE_COACH_MAX_CHARS: "400",
   }));
@@ -52,6 +53,7 @@ test("valid overrides and localhost HTTP; no silent model fallback", () => {
     assert.equal(result.config.timeoutMs, 50);
     assert.equal(result.config.maxChars, 400);
     assert.equal(result.config.autoSave, false);
+    assert.equal(result.config.groupBy, "day", "one file per local day instead of per ISO week");
   }
   for (const thinking of ["adaptive", "low", "medium", "high"] as const) {
     const result = loadConfig(iso({ PI_LANGUAGE_COACH_API_KEY: "fake", PI_LANGUAGE_COACH_THINKING: thinking }));
@@ -67,6 +69,7 @@ test("invalid environment is disabled without echoing values", () => {
     { MODEL: "bad\x1bmodel" }, { MODEL: "" },
     ...["yes", "on", "", "TRUE", "enabled", "xhigh", "max"].map(THINKING => ({ THINKING })),
     ...["yes", "on", "", "TRUE"].map(AUTO_SAVE => ({ AUTO_SAVE })),
+    ...["daily", "weekly", "", "WEEK", "week ", "hour"].map(GROUP_BY => ({ GROUP_BY })),
     ...["yes", "on", "", "TRUE"].map(SHOW_ORIGINAL => ({ SHOW_ORIGINAL })),
     ...["yes", "on", "", "TRUE"].map(SHOW_PRACTICE => ({ SHOW_PRACTICE })),
     { PROMPT: "   \n  " }, { PROMPT_FILE: "/nonexistent/coach-prompt.md" },
@@ -93,7 +96,7 @@ test("deepseek and h-self presets resolve scoped keys, preset endpoints and mode
       api: "openai-completions", apiKey: "test-only", model: "deepseek-flash", thinking: "medium",
       endpoint: "https://api.deepseek.com/chat/completions",
       systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
-      autoSave: true, timeoutMs: 30000, maxChars: 200,
+      autoSave: true, groupBy: "week", timeoutMs: 30000, maxChars: 200,
     });
   }
   const relay = loadConfig(iso({ PI_LANGUAGE_COACH_PROVIDER: "h-self", PI_LANGUAGE_COACH_H_SELF_API_KEY: "test-only" }));
@@ -128,7 +131,7 @@ test("zai preset uses the coding endpoint, keeps thinking off and accepts a scop
       api: "openai-completions", apiKey: "test-only", model: "glm-5.3-flash", thinking: "disabled",
       endpoint: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
       systemPrompt: SYSTEM_PROMPT, showOriginal: true, showPractice: true,
-      autoSave: true, timeoutMs: 30000, maxChars: 200,
+      autoSave: true, groupBy: "week", timeoutMs: 30000, maxChars: 200,
     });
   }
   // Thinking is only the preset default: the two higher-precedence sources still win.
@@ -183,7 +186,7 @@ test("config.json in the agent dir holds everything; env fields still win one by
     const coachDir = join(root, "language-coach");
     await mkdir(coachDir, { recursive: true });
     await writeFile(join(coachDir, "config.json"), JSON.stringify({
-      provider: "h-self", thinking: "low", showPractice: false, timeoutMs: 45000, maxChars: 350,
+      provider: "h-self", thinking: "low", showPractice: false, timeoutMs: 45000, maxChars: 350, groupBy: "day",
       promptFile: "prompt.md",
       providers: { "h-self": { apiKey: "file-key" } },
     }));
@@ -198,6 +201,7 @@ test("config.json in the agent dir holds everything; env fields still win one by
       assert.equal(fromFile.config.showPractice, false);
       assert.equal(fromFile.config.timeoutMs, 45000);
       assert.equal(fromFile.config.maxChars, 350, "config.json can widen the cap past the 200 default");
+      assert.equal(fromFile.config.groupBy, "day", "config.json picks the bundle granularity");
       assert.equal(fromFile.config.systemPrompt, "文件里的提示词", "promptFile resolves relative to the coach dir");
       assert.equal(fromFile.config.endpoint, "https://ai.yuchuantest.com/v1/responses");
     }
@@ -219,6 +223,11 @@ test("config.json in the agent dir holds everything; env fields still win one by
     await writeFile(join(coachDir, "config.json"), JSON.stringify({ provider: "h-self", providers: { "h-self": { apiKey: 5 } } }));
     assert.equal(loadConfig({ PI_CODING_AGENT_DIR: root }).kind, "disabled");
     // Out-of-range or non-integer caps are a named disable too, never a silent fallback.
+    for (const groupBy of ["daily", "WEEK", 1]) {
+      await writeFile(join(coachDir, "config.json"), JSON.stringify({ provider: "h-self", groupBy,
+        providers: { "h-self": { apiKey: "file-key" } } }));
+      assert.equal(loadConfig({ PI_CODING_AGENT_DIR: root }).kind, "disabled", JSON.stringify({ groupBy }));
+    }
     for (const maxChars of [0, 100001, 12.5, "350"]) {
       await writeFile(join(coachDir, "config.json"), JSON.stringify({ provider: "h-self", maxChars,
         providers: { "h-self": { apiKey: "file-key" } } }));

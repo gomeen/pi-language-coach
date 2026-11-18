@@ -18,16 +18,20 @@ const lesson = {
   grammar: { excerpt: "Don't implement", pattern: "Don't + base verb", explanations: ["否定祈使句。"], correction: "保持动词原形。" },
 };
 
+/** 0.9 wrote one file per lesson; those files stay readable forever, so tests still build them. */
+const legacy = (id: string, savedAt: string, extra: Record<string, unknown> = {}) =>
+  ({ version: 1, id, savedAt, original: lesson.original, english: lesson.english, grammar: lesson.grammar, ...extra });
+
 test("loads complete saved records newest first, including English-only lessons", async () => {
   await temporary(async directory => {
-    await saveLesson(lesson, directory);
-    await saveLesson({ original: "你好", english: "Hello." }, directory);
-    for (const name of await readdir(directory)) {
-      const path = join(directory, name);
-      const record = JSON.parse(await readFile(path, "utf8"));
-      record.savedAt = record.english === "Hello." ? "2026-01-02T00:00:00.000Z" : "2026-01-01T00:00:00.000Z";
-      record.apiKey = "EXTRA_SECRET";
-      await writeFile(path, JSON.stringify(record));
+    await mkdir(directory, { recursive: true });
+    const records = [
+      legacy("1".repeat(64), "2026-01-01T00:00:00.000Z"),
+      { version: 1, id: "2".repeat(64), savedAt: "2026-01-02T00:00:00.000Z", original: "你好", english: "Hello.",
+        apiKey: "EXTRA_SECRET" },
+    ];
+    for (const record of records) {
+      await writeFile(join(directory, `${record.id}.json`), JSON.stringify(record));
     }
     const data = await loadLessons(directory);
     assert.equal(data.skipped, 0);
@@ -50,12 +54,37 @@ test("loads complete saved records newest first, including English-only lessons"
   });
 });
 
+test("a weekly bundle reads like the old per-lesson files, and a bad lesson is skipped alone", async () => {
+  await temporary(async directory => {
+    // Two weeks of saves: the same content is stored once per file, never merged across weeks.
+    await saveLesson(lesson, directory, { now: new Date(2026, 10, 16, 9) });
+    await saveLesson(lesson, directory, { now: new Date(2026, 10, 23, 9) });
+    await saveLesson({ original: "你好", english: "Hello." }, directory, { now: new Date(2026, 10, 24, 9) });
+    assert.deepEqual((await readdir(directory)).sort(), ["2026-W47.json", "2026-W48.json"]);
+    const data = await loadLessons(directory);
+    assert.equal(data.skipped, 0);
+    assert.equal(data.lessons.length, 3, "both weeks are read as one list");
+    assert.equal(data.lessons[0]!.english, "Hello.", "newest first across files");
+    // One damaged lesson inside a bundle costs only that lesson, and the file is not rewritten.
+    const path = join(directory, "2026-W48.json");
+    const file = JSON.parse(await readFile(path, "utf8"));
+    file.lessons[1] = { ...file.lessons[1], english: 3 };
+    file.apiKey = "EXTRA_SECRET";
+    await writeFile(path, JSON.stringify(file));
+    const damaged = await loadLessons(directory);
+    assert.equal(damaged.skipped, 1);
+    assert.equal(damaged.lessons.length, 2);
+    assert.doesNotMatch(JSON.stringify(damaged), /EXTRA_SECRET/);
+  });
+});
+
 test("malformed, unsupported and invalid records are skipped visibly without modifying originals", async () => {
   await temporary(async directory => {
-    await saveLesson(lesson, directory);
-    const [name] = await readdir(directory);
-    const raw = await readFile(join(directory, name!), "utf8");
-    const valid = JSON.parse(raw);
+    await mkdir(directory, { recursive: true });
+    const valid = legacy("9".repeat(64), "2026-01-01T00:00:00.000Z");
+    await writeFile(join(directory, `${valid.id}.json`), JSON.stringify(valid));
+    const name = `${valid.id}.json`;
+    const raw = await readFile(join(directory, name), "utf8");
     const invalid: unknown[] = [null, [], { ...valid, version: 2 }, { ...valid, id: "wrong" },
       { ...valid, original: " " }, { ...valid, english: 3 }, { ...valid, savedAt: "invalid" },
       { ...valid, grammar: { pattern: "incomplete" } }, { ...valid, grammar: null }];
@@ -268,9 +297,10 @@ test("saved word notes round-trip to the review page; old records without words 
   await temporary(async directory => {
     const plain = { original: "你好", english: "Hello." };
     await saveLesson(plain, directory);
-    const [before] = await readdir(directory);
+    const file = join(directory, (await readdir(directory))[0]!);
+    const before = await readFile(file, "utf8");
     await saveLesson({ ...plain, words: [] }, directory);
-    assert.deepEqual(await readdir(directory), [before], "an empty word list does not change content identity");
+    assert.equal(await readFile(file, "utf8"), before, "an empty word list does not change content identity");
     await saveLesson({ original: "没有写死的吧", english: "Nothing is <hard-coded>.",
       words: [{ word: "<hard-coded>", meaning: "写死的 & 固定" }] }, directory);
     const data = await loadLessons(directory);
@@ -279,9 +309,10 @@ test("saved word notes round-trip to the review page; old records without words 
     assert.deepEqual(withWords.words, [{ word: "<hard-coded>", meaning: "写死的 & 固定" }]);
     const html = renderReview(data);
     assert.match(html, /<span class="grammar-label">词语<\/span><ol><li><span lang="en">&lt;hard-coded&gt;<\/span> 写死的 &amp; 固定<\/li><\/ol>/);
-    const [name] = (await readdir(directory)).filter(file => file !== before);
-    const record = JSON.parse(await readFile(join(directory, name!), "utf8"));
-    await writeFile(join(directory, name!), JSON.stringify({ ...record, words: [{ word: 1 }] }));
+    // A bundle whose lesson carries unusable word notes loses only that lesson.
+    const bundle = JSON.parse(await readFile(file, "utf8"));
+    bundle.lessons[1].words = [{ word: 1 }];
+    await writeFile(file, JSON.stringify(bundle));
     assert.equal((await loadLessons(directory)).skipped, 1, "malformed word notes are skipped like other bad records");
   });
 });
